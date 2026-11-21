@@ -1,0 +1,4239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Gravity Sketch - Interactive Physics Canvas</title>
+  
+  <!-- Favicon: Glowing Neon Physics Drop -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='g' x1='0%' y1='0%' x2='100%' y2='100%'><stop offset='0%' stop-color='%2300f0ff'/><stop offset='50%' stop-color='%23ff007f'/><stop offset='100%' stop-color='%23ffe600'/></linearGradient><filter id='glow'><feGaussianBlur stdDeviation='3' result='coloredBlur'/><feMerge><feMergeNode in='coloredBlur'/></feMerge></filter></defs><circle cx='50' cy='50' r='42' fill='%23090a10'/><path d='M50 16 C34 38 24 54 24 68 A26 26 0 0 0 76 68 C76 54 66 38 50 16 Z' fill='url(%23g)' filter='url(%23glow)'/><circle cx='44' cy='62' r='6' fill='%23ffffff' opacity='0.85'/></svg>">
+
+  <style>
+    /* ==========================================================================
+       CSS Variables & Global Responsive Theme
+       ========================================================================== */
+    :root {
+      --bg-space: #07080e;
+      --bg-panel: rgba(15, 18, 28, 0.86);
+      --bg-panel-solid: #0e111a;
+      --bg-panel-hover: rgba(26, 32, 48, 0.94);
+      --bg-card: rgba(255, 255, 255, 0.05);
+      --bg-active: rgba(0, 240, 255, 0.2);
+      
+      --border-subtle: rgba(255, 255, 255, 0.12);
+      --border-bright: rgba(0, 240, 255, 0.5);
+      --border-magenta: rgba(255, 0, 127, 0.5);
+      --border-orange: rgba(255, 119, 0, 0.55);
+      --border-ice: rgba(165, 243, 252, 0.55);
+
+      --neon-cyan: #00f0ff;
+      --neon-magenta: #ff007f;
+      --neon-purple: #9d4edd;
+      --neon-yellow: #ffe600;
+      --neon-green: #00ff88;
+      --neon-orange: #ff7700;
+      --neon-fire: #ff3b00;
+      --neon-ice: #38bdf8;
+
+      --text-main: #f0f4fc;
+      --text-muted: #9aa5bc;
+      --text-dim: #606d85;
+
+      --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      --font-mono: ui-monospace, "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", monospace;
+
+      --shadow-glow-cyan: 0 0 18px rgba(0, 240, 255, 0.4);
+      --shadow-glow-fire: 0 0 20px rgba(255, 75, 0, 0.45);
+      --shadow-glow-ice: 0 0 20px rgba(56, 189, 248, 0.45);
+      --shadow-panel: 0 16px 40px rgba(0, 0, 0, 0.75), 0 0 0 1px var(--border-subtle);
+
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+      --radius-full: 9999px;
+
+      --trans-fast: 0.15s ease;
+      --trans-normal: 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+      --trans-bounce: 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+      --safe-left: env(safe-area-inset-left, 0px);
+      --safe-right: env(safe-area-inset-right, 0px);
+    }
+
+    /* ==========================================================================
+       Global Reset & Foundation
+       ========================================================================== */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-touch-callout: none;
+    }
+
+    html {
+      width: 100%;
+      height: 100%;
+      overflow-x: hidden;
+      font-size: clamp(12px, 1.1vw + 10px, 16px);
+    }
+
+    body {
+      width: 100%;
+      height: 100%;
+      min-height: 100vh;
+      min-height: -webkit-fill-available;
+      overflow: hidden;
+      overflow-x: hidden;
+      background-color: var(--bg-space);
+      font-family: var(--font-family);
+      color: var(--text-main);
+      touch-action: none;
+      -webkit-tap-highlight-color: transparent;
+      position: fixed;
+      inset: 0;
+    }
+
+    /* Interactive Elements: Touch Targets & No Double-Tap Zoom */
+    button, 
+    .btn, 
+    .brush-btn, 
+    .tool-btn, 
+    .swatch-wrapper, 
+    .preset-btn, 
+    .chip-btn, 
+    .drawer-item,
+    .btn-icon-only {
+      touch-action: manipulation;
+      min-width: 44px;
+      min-height: 44px;
+    }
+
+    /* Canvas Stack */
+    #canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+      display: block;
+      cursor: crosshair;
+      touch-action: none;
+      transition: filter 0.2s ease;
+    }
+
+    #bg-canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    /* Shake to Clear Canvas Animation */
+    .screen-shaking {
+      animation: screen-vibrate 0.08s infinite alternate !important;
+    }
+
+    @keyframes screen-vibrate {
+      0% { transform: translate(-6px, 4px) rotate(-0.4deg); }
+      25% { transform: translate(6px, -4px) rotate(0.4deg); }
+      50% { transform: translate(-4px, -5px) rotate(-0.3deg); }
+      75% { transform: translate(5px, 5px) rotate(0.3deg); }
+      100% { transform: translate(-3px, 3px) rotate(0deg); }
+    }
+
+    /* Shutter Flash Animation for Screenshot */
+    .shutter-flash {
+      position: fixed;
+      inset: 0;
+      background: #ffffff;
+      pointer-events: none;
+      opacity: 0;
+      z-index: 9999;
+    }
+
+    .shutter-flash.flash-active {
+      animation: flash-fade 0.35s cubic-bezier(0.1, 0.9, 0.2, 1) forwards;
+    }
+
+    @keyframes flash-fade {
+      0% { opacity: 0.85; }
+      100% { opacity: 0; }
+    }
+
+    /* ==========================================================================
+       UI Overlay Layout
+       ========================================================================== */
+    .ui-layer {
+      position: absolute;
+      inset: 0;
+      z-index: 10;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: max(8px, var(--safe-top)) max(8px, var(--safe-right)) max(8px, var(--safe-bottom)) max(8px, var(--safe-left));
+      transition: opacity 0.3s ease, transform 0.3s ease;
+      overflow-x: hidden;
+    }
+
+    .ui-layer.ui-hidden {
+      opacity: 0;
+      pointer-events: none;
+      transform: scale(0.98);
+    }
+
+    .interactive {
+      pointer-events: auto;
+    }
+
+    /* Glassmorphism Panel Base */
+    .glass-panel {
+      background: var(--bg-panel);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--border-subtle);
+      box-shadow: var(--shadow-panel);
+      border-radius: var(--radius-md);
+      transition: border-color var(--trans-normal), box-shadow var(--trans-normal);
+    }
+
+    .glass-panel:hover {
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    /* ==========================================================================
+       Header Bar
+       ========================================================================== */
+    .header-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: clamp(6px, 1.2vw, 12px);
+      padding: clamp(6px, 1vw, 8px) clamp(8px, 1.4vw, 14px);
+      max-width: 100%;
+      flex-shrink: 0;
+    }
+
+    .brand-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .brand-icon {
+      width: clamp(30px, 3.8vw, 36px);
+      height: clamp(30px, 3.8vw, 36px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, rgba(0, 240, 255, 0.22), rgba(255, 0, 127, 0.22));
+      border: 1px solid var(--border-bright);
+      border-radius: var(--radius-sm);
+      box-shadow: 0 0 14px rgba(0, 240, 255, 0.35);
+      animation: pulse-glow 3s infinite alternate;
+      flex-shrink: 0;
+    }
+
+    @keyframes pulse-glow {
+      0% { box-shadow: 0 0 10px rgba(0, 240, 255, 0.25); }
+      100% { box-shadow: 0 0 22px rgba(255, 0, 127, 0.45); }
+    }
+
+    .brand-icon svg {
+      width: clamp(17px, 2.2vw, 22px);
+      height: clamp(17px, 2.2vw, 22px);
+    }
+
+    .brand-text h1 {
+      font-size: clamp(13px, 1.8vw, 16px);
+      font-weight: 700;
+      letter-spacing: 0.6px;
+      background: linear-gradient(90deg, #ffffff 0%, var(--neon-cyan) 60%, var(--neon-magenta) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+
+    .badge-tag {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      padding: 2px 5px;
+      border-radius: 4px;
+      background: rgba(0, 240, 255, 0.15);
+      color: var(--neon-cyan);
+      border: 1px solid rgba(0, 240, 255, 0.35);
+      -webkit-text-fill-color: initial;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      flex-wrap: nowrap;
+    }
+
+    /* Live Stats Pill */
+    .stats-pill {
+      display: flex;
+      align-items: center;
+      gap: clamp(6px, 1vw, 12px);
+      padding: 4px clamp(8px, 1vw, 12px);
+      font-family: var(--font-mono);
+      font-size: clamp(10px, 0.9vw, 11px);
+      color: var(--text-muted);
+      background: rgba(0, 0, 0, 0.45);
+      border-radius: var(--radius-full);
+      border: 1px solid var(--border-subtle);
+      white-space: nowrap;
+      min-height: 34px;
+    }
+
+    .stat-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .stat-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: var(--neon-green);
+      box-shadow: 0 0 8px var(--neon-green);
+      transition: background-color 0.3s;
+      flex-shrink: 0;
+    }
+
+    .stat-value {
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .stat-label {
+      font-size: 9px;
+      letter-spacing: 0.5px;
+      opacity: 0.8;
+    }
+
+    /* Mobile Header Quick Actions */
+    .mobile-header-actions {
+      display: none;
+      align-items: center;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+
+    /* ==========================================================================
+       Standard Buttons & Controls (Min 44px x 44px Touch Targets)
+       ========================================================================== */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 8px 12px;
+      font-size: clamp(11px, 1vw, 12px);
+      font-weight: 600;
+      color: var(--text-main);
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: all var(--trans-fast);
+      outline: none;
+      position: relative;
+      white-space: nowrap;
+      min-height: 44px;
+      min-width: 44px;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .btn:hover {
+      background: var(--bg-panel-hover);
+      border-color: rgba(255, 255, 255, 0.24);
+      transform: translateY(-1px);
+    }
+
+    .btn:active {
+      transform: translateY(1px);
+    }
+
+    .btn-icon-only {
+      width: 44px;
+      height: 44px;
+      padding: 0;
+      border-radius: var(--radius-sm);
+      flex-shrink: 0;
+    }
+
+    .btn-icon-only svg {
+      width: 18px;
+      height: 18px;
+      fill: currentColor;
+    }
+
+    .btn-danger:hover {
+      border-color: rgba(255, 75, 75, 0.6);
+      background: rgba(255, 50, 50, 0.2);
+      color: #ff6b6b;
+      box-shadow: 0 0 14px rgba(255, 50, 50, 0.35);
+    }
+
+    .btn-warning:hover {
+      border-color: rgba(255, 170, 0, 0.65);
+      background: rgba(255, 170, 0, 0.2);
+      color: #ffcc00;
+      box-shadow: 0 0 14px rgba(255, 170, 0, 0.35);
+    }
+
+    .btn-primary:hover {
+      border-color: var(--neon-cyan);
+      background: rgba(0, 240, 255, 0.2);
+      color: var(--neon-cyan);
+      box-shadow: var(--shadow-glow-cyan);
+    }
+
+    .btn.active {
+      background: var(--bg-active);
+      border-color: var(--neon-cyan);
+      color: var(--neon-cyan);
+      box-shadow: var(--shadow-glow-cyan);
+    }
+
+    /* Tooltips - Only shown on hover-capable devices (desktops) */
+    @media (hover: hover) and (pointer: fine) {
+      .tooltip {
+        position: relative;
+      }
+
+      .tooltip::after {
+        content: attr(data-tooltip);
+        position: absolute;
+        bottom: calc(100% + 8px);
+        left: 50%;
+        transform: translateX(-50%) translateY(4px);
+        background: rgba(12, 15, 24, 0.96);
+        border: 1px solid var(--border-subtle);
+        color: var(--text-main);
+        padding: 5px 9px;
+        font-size: 11px;
+        font-weight: 500;
+        white-space: nowrap;
+        border-radius: 6px;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.2s ease, transform 0.2s ease;
+        box-shadow: 0 8px 18px rgba(0, 0, 0, 0.6);
+        z-index: 50;
+      }
+
+      .tooltip:hover::after {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+      }
+
+      .tooltip-down::after {
+        bottom: auto;
+        top: calc(100% + 8px);
+      }
+    }
+
+    /* ==========================================================================
+       Brush Selector Bar & Bottom Dock (Fully Responsive)
+       ========================================================================== */
+    .dock-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: clamp(6px, 1.2vh, 10px);
+      max-width: 1140px;
+      margin: 0 auto;
+      width: 100%;
+      flex-shrink: 0;
+    }
+
+    /* Top Row: Brush Selector Toolbar */
+    .brush-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: var(--radius-lg);
+      background: rgba(15, 18, 28, 0.92);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+      max-width: 100%;
+      overflow-x: auto;
+      scrollbar-width: none;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .brush-bar::-webkit-scrollbar {
+      display: none;
+    }
+
+    .toolbar-label {
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      padding-right: 4px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .brush-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: nowrap;
+    }
+
+    .brush-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 6px 12px;
+      font-size: clamp(11px, 1vw, 12px);
+      font-weight: 600;
+      color: var(--text-muted);
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: all var(--trans-fast);
+      min-height: 44px;
+      min-width: 44px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .brush-btn:hover {
+      color: #fff;
+      background: rgba(255, 255, 255, 0.1);
+      transform: translateY(-1px);
+    }
+
+    .brush-btn.active {
+      color: #fff;
+      border-color: var(--neon-cyan);
+      background: linear-gradient(135deg, rgba(0, 240, 255, 0.25), rgba(157, 78, 221, 0.25));
+      box-shadow: 0 0 16px rgba(0, 240, 255, 0.35);
+    }
+
+    .brush-btn[data-brush="fire"].active {
+      border-color: var(--neon-fire);
+      background: linear-gradient(135deg, rgba(255, 59, 0, 0.35), rgba(255, 170, 0, 0.25));
+      box-shadow: 0 0 18px rgba(255, 75, 0, 0.5);
+    }
+
+    .brush-btn[data-brush="ice"].active {
+      border-color: var(--neon-ice);
+      background: linear-gradient(135deg, rgba(56, 189, 248, 0.35), rgba(224, 247, 250, 0.25));
+      box-shadow: 0 0 18px rgba(56, 189, 248, 0.5);
+    }
+
+    .brush-btn[data-brush="rainbow"].active {
+      border-color: #ffffff;
+      background: linear-gradient(135deg, rgba(255, 0, 128, 0.3), rgba(0, 240, 255, 0.3), rgba(255, 230, 0, 0.3));
+      box-shadow: 0 0 18px rgba(255, 255, 255, 0.45);
+    }
+
+    .brush-btn[data-brush="explode"].active {
+      border-color: var(--neon-yellow);
+      background: linear-gradient(135deg, rgba(255, 230, 0, 0.35), rgba(255, 0, 127, 0.3));
+      box-shadow: 0 0 18px rgba(255, 230, 0, 0.5);
+    }
+
+    .brush-icon {
+      font-size: 15px;
+      line-height: 1;
+    }
+
+    /* Main Bottom Dock Bar */
+    .bottom-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: clamp(6px, 1vw, 10px);
+      padding: 6px clamp(8px, 1.2vw, 14px);
+      border-radius: var(--radius-lg);
+      max-width: 100%;
+    }
+
+    .divider {
+      width: 1px;
+      height: 24px;
+      background: var(--border-subtle);
+      margin: 0 2px;
+      flex-shrink: 0;
+    }
+
+    .btn-group {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      background: rgba(0, 0, 0, 0.35);
+      padding: 3px;
+      border-radius: var(--radius-sm);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      max-width: 100%;
+      overflow-x: auto;
+      scrollbar-width: none;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .btn-group::-webkit-scrollbar {
+      display: none;
+    }
+
+    .tool-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 6px 10px;
+      font-size: clamp(11px, 0.9vw, 12px);
+      font-weight: 500;
+      border-radius: 6px;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all var(--trans-fast);
+      min-height: 44px;
+      min-width: 44px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .tool-btn svg {
+      width: 16px;
+      height: 16px;
+      fill: currentColor;
+      flex-shrink: 0;
+    }
+
+    .tool-btn:hover {
+      color: var(--text-main);
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .tool-btn.active {
+      color: #fff;
+      background: linear-gradient(135deg, rgba(0, 240, 255, 0.28), rgba(157, 78, 221, 0.28));
+      border-color: var(--neon-cyan);
+      box-shadow: 0 0 14px rgba(0, 240, 255, 0.35);
+    }
+
+    .dock-controls-subgroup {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* Color Swatches Palette with 44px x 44px Touch Targets */
+    .palette-group {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      padding: 2px 4px;
+      background: rgba(0, 0, 0, 0.35);
+      border-radius: var(--radius-sm);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      overflow-x: auto;
+      scrollbar-width: none;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .palette-group::-webkit-scrollbar {
+      display: none;
+    }
+
+    .swatch-wrapper {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 44px;
+      height: 44px;
+      cursor: pointer;
+      background: transparent;
+      border: none;
+      outline: none;
+      flex-shrink: 0;
+    }
+
+    .swatch {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      border: 2px solid transparent;
+      transition: transform var(--trans-bounce), border-color var(--trans-fast), box-shadow var(--trans-fast);
+      position: relative;
+      pointer-events: none;
+    }
+
+    .swatch-wrapper:hover .swatch {
+      transform: scale(1.18);
+    }
+
+    .swatch-wrapper.active .swatch {
+      transform: scale(1.24);
+      border-color: #ffffff;
+      box-shadow: 0 0 14px currentColor;
+    }
+
+    .swatch-rainbow {
+      background: conic-gradient(from 0deg, #ff0000, #ff7700, #ffe600, #00ff88, #00f0ff, #9d4edd, #ff007f, #ff0000);
+      animation: spin-swatch 12s linear infinite;
+    }
+
+    @keyframes spin-swatch {
+      100% { transform: rotate(360deg); }
+    }
+    .swatch-wrapper.active .swatch-rainbow {
+      border-color: #ffffff;
+      box-shadow: 0 0 16px rgba(255, 255, 255, 0.7);
+    }
+
+    /* Sliders & Time Slow-Mo Control */
+    .brush-size-control {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      width: clamp(75px, 10vw, 95px);
+      min-height: 44px;
+      padding: 0 4px;
+    }
+
+    .time-control-dock {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(0, 0, 0, 0.35);
+      padding: 4px 10px;
+      border-radius: var(--radius-sm);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      min-height: 44px;
+    }
+
+    .dock-label {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--text-dim);
+      letter-spacing: 0.5px;
+    }
+
+    .time-val {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--neon-cyan);
+      min-width: 30px;
+      text-align: right;
+    }
+
+    .time-range-input {
+      width: clamp(65px, 8vw, 85px);
+    }
+
+    /* Modern Slider Inputs (Touch-Friendly: 24px Thumb) */
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 8px;
+      background: rgba(255, 255, 255, 0.14);
+      border-radius: 4px;
+      outline: none;
+      transition: background 0.2s ease;
+      touch-action: pan-x;
+    }
+
+    input[type="range"]:hover {
+      background: rgba(255, 255, 255, 0.22);
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: var(--neon-cyan);
+      box-shadow: 0 0 10px var(--neon-cyan);
+      cursor: pointer;
+      transition: transform var(--trans-fast), background var(--trans-fast);
+    }
+
+    input[type="range"]::-webkit-slider-thumb:hover,
+    input[type="range"]:active::-webkit-slider-thumb {
+      transform: scale(1.2);
+      background: #ffffff;
+    }
+
+    /* ==========================================================================
+       Physics Tuning Flyout Panel (Responsive Bottom Sheet / Popover)
+       ========================================================================== */
+    .controls-panel {
+      position: absolute;
+      bottom: calc(105px + var(--safe-bottom));
+      right: max(16px, var(--safe-right));
+      width: min(340px, calc(100vw - 32px));
+      max-height: calc(100vh - 160px);
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      opacity: 0;
+      transform: translateY(12px) scale(0.96);
+      pointer-events: none;
+      transition: all var(--trans-normal);
+      z-index: 45;
+    }
+
+    .controls-panel.open {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      pointer-events: auto;
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border-subtle);
+      padding-bottom: 8px;
+    }
+
+    .panel-header h3 {
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .control-row {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .control-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11.5px;
+      color: var(--text-muted);
+    }
+
+    .control-label span.val {
+      font-family: var(--font-mono);
+      font-weight: 600;
+      color: var(--neon-cyan);
+    }
+
+    /* Toggle Switches with 44px Hit Target */
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--text-muted);
+      min-height: 44px;
+    }
+
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 44px;
+      height: 26px;
+      flex-shrink: 0;
+    }
+
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      inset: 0;
+      background-color: rgba(255, 255, 255, 0.14);
+      transition: var(--trans-fast);
+      border-radius: 20px;
+      border: 1px solid var(--border-subtle);
+    }
+
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background-color: var(--text-main);
+      transition: var(--trans-fast);
+      border-radius: 50%;
+    }
+
+    input:checked + .slider {
+      background-color: rgba(0, 240, 255, 0.35);
+      border-color: var(--neon-cyan);
+    }
+
+    input:checked + .slider:before {
+      transform: translateX(18px);
+      background-color: var(--neon-cyan);
+      box-shadow: 0 0 8px var(--neon-cyan);
+    }
+
+    /* Quick Speed Chips */
+    .speed-chips {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+      margin-top: 4px;
+    }
+
+    .chip-btn {
+      padding: 6px 4px;
+      font-size: 11px;
+      font-family: var(--font-mono);
+      font-weight: 600;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      color: var(--text-muted);
+      cursor: pointer;
+      text-align: center;
+      transition: all var(--trans-fast);
+      min-height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .chip-btn:hover {
+      background: rgba(255, 255, 255, 0.12);
+      color: #fff;
+    }
+
+    .chip-btn.active {
+      background: var(--bg-active);
+      border-color: var(--neon-cyan);
+      color: var(--neon-cyan);
+    }
+
+    /* ==========================================================================
+       Presets Quick Drawer / Popout
+       ========================================================================== */
+    .presets-drawer {
+      position: absolute;
+      bottom: calc(105px + var(--safe-bottom));
+      left: max(16px, var(--safe-left));
+      width: min(280px, calc(100vw - 32px));
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      opacity: 0;
+      transform: translateY(12px) scale(0.96);
+      pointer-events: none;
+      transition: all var(--trans-normal);
+      z-index: 45;
+    }
+
+    .presets-drawer.open {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      pointer-events: auto;
+    }
+
+    .preset-btn {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      border-radius: var(--radius-sm);
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-main);
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: left;
+      transition: all var(--trans-fast);
+      min-height: 48px;
+    }
+
+    .preset-btn:hover {
+      background: var(--bg-panel-hover);
+      border-color: var(--neon-cyan);
+      color: var(--neon-cyan);
+      transform: translateX(3px);
+    }
+
+    /* ==========================================================================
+       Mobile Slide-Out / Collapsible Hamburger Menu
+       ========================================================================== */
+    .mobile-menu-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      z-index: 90;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease;
+    }
+
+    .mobile-menu-backdrop.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .mobile-menu-drawer {
+      position: fixed;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: min(340px, 86vw);
+      background: var(--bg-panel-solid);
+      border-left: 1px solid var(--border-subtle);
+      box-shadow: -10px 0 35px rgba(0, 0, 0, 0.8);
+      z-index: 95;
+      transform: translateX(100%);
+      transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      padding: max(16px, var(--safe-top)) max(16px, var(--safe-right)) max(16px, var(--safe-bottom)) 16px;
+    }
+
+    .mobile-menu-backdrop.open .mobile-menu-drawer {
+      transform: translateX(0);
+    }
+
+    .mobile-menu-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-bottom: 12px;
+      margin-bottom: 12px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .mobile-menu-header h2 {
+      font-size: 15px;
+      font-weight: 700;
+      background: linear-gradient(90deg, #fff, var(--neon-cyan));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .menu-section {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .menu-section-title {
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      margin-top: 4px;
+    }
+
+    .drawer-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 14px;
+      border-radius: var(--radius-sm);
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-main);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: left;
+      transition: all var(--trans-fast);
+      min-height: 48px;
+    }
+
+    .drawer-item:hover, .drawer-item:active {
+      background: var(--bg-panel-hover);
+      border-color: var(--neon-cyan);
+      color: var(--neon-cyan);
+    }
+
+    .drawer-item-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .drawer-item-left svg {
+      width: 18px;
+      height: 18px;
+      flex-shrink: 0;
+    }
+
+    .drawer-item-badge {
+      font-size: 10px;
+      font-family: var(--font-mono);
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text-muted);
+    }
+
+    /* ==========================================================================
+       Modals, Toasts & Zen Hints
+       ========================================================================== */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.8);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease;
+      padding: clamp(10px, 3vw, 20px);
+    }
+
+    .modal-backdrop.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .modal-card {
+      width: 100%;
+      max-width: min(540px, 94vw);
+      background: var(--bg-panel-solid);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: clamp(16px, 3vw, 24px);
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.8), 0 0 40px rgba(0, 240, 255, 0.12);
+      transform: translateY(16px) scale(0.97);
+      transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+      max-height: 85vh;
+      overflow-y: auto;
+    }
+
+    .modal-backdrop.open .modal-card {
+      transform: translateY(0) scale(1);
+    }
+
+    .modal-card h2 {
+      font-size: clamp(15px, 2vw, 18px);
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .shortcut-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .shortcut-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: clamp(11.5px, 1.2vw, 13px);
+      color: var(--text-muted);
+      gap: 10px;
+      min-height: 32px;
+    }
+
+    kbd {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 5px;
+      box-shadow: 0 2px 0 rgba(0, 0, 0, 0.4);
+      padding: 3px 8px;
+      font-family: var(--font-mono);
+      font-size: clamp(10px, 1vw, 11px);
+      font-weight: 600;
+      color: var(--neon-cyan);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .toast {
+      position: absolute;
+      top: calc(64px + var(--safe-top));
+      left: 50%;
+      transform: translateX(-50%) translateY(-20px);
+      background: rgba(15, 18, 28, 0.96);
+      border: 1px solid var(--border-bright);
+      color: var(--text-main);
+      padding: 8px 18px;
+      border-radius: var(--radius-full);
+      font-size: clamp(11px, 1.2vw, 12.5px);
+      font-weight: 600;
+      box-shadow: var(--shadow-glow-cyan);
+      backdrop-filter: blur(12px);
+      pointer-events: none;
+      opacity: 0;
+      transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+      z-index: 80;
+      white-space: nowrap;
+      max-width: 90vw;
+      text-align: center;
+      text-overflow: ellipsis;
+      overflow: hidden;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    .zen-hint {
+      position: fixed;
+      bottom: max(12px, var(--safe-bottom));
+      right: max(12px, var(--safe-right));
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.45);
+      pointer-events: auto;
+      cursor: pointer;
+      padding: 6px 12px;
+      border-radius: var(--radius-full);
+      background: rgba(10, 12, 18, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(8px);
+      transition: color 0.2s, background 0.2s, border-color 0.2s;
+      z-index: 99;
+      min-height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      touch-action: manipulation;
+    }
+
+    .zen-hint:hover {
+      color: var(--neon-cyan);
+      background: rgba(0, 0, 0, 0.85);
+      border-color: var(--neon-cyan);
+    }
+
+    /* ==========================================================================
+       Responsive Media Queries
+       ========================================================================== */
+
+    /* Tablet Breakpoint (max-width: 768px) */
+    @media (max-width: 768px) {
+      .header-bar {
+        padding: 6px 8px;
+      }
+
+      .brand-text .badge-tag {
+        display: none;
+      }
+
+      .header-actions {
+        display: none; /* Secondary desktop controls collapsed into mobile menu */
+      }
+
+      .mobile-header-actions {
+        display: flex;
+      }
+
+      .stats-pill {
+        display: none;
+      }
+
+      .tool-btn span {
+        display: none;
+      }
+
+      .tool-btn {
+        padding: 6px 0;
+        min-width: 0;
+        width: 100%;
+        min-height: 44px;
+      }
+
+      .controls-panel {
+        right: auto;
+        left: 50%;
+        transform: translateX(-50%) translateY(16px);
+        width: min(380px, calc(100vw - 20px));
+        bottom: calc(130px + var(--safe-bottom));
+        max-height: 65vh;
+      }
+
+      .controls-panel.open {
+        transform: translateX(-50%) translateY(0);
+      }
+
+      .presets-drawer {
+        left: 50%;
+        transform: translateX(-50%) translateY(16px);
+        width: min(340px, calc(100vw - 20px));
+        bottom: calc(130px + var(--safe-bottom));
+      }
+
+      .presets-drawer.open {
+        transform: translateX(-50%) translateY(0);
+      }
+
+      .desktop-only {
+        display: none !important;
+      }
+
+      .dock-container {
+        max-width: 100%;
+        width: 100%;
+        gap: 6px;
+      }
+
+      .brush-bar {
+        width: 100%;
+        padding: 4px 6px;
+      }
+
+      .brush-group {
+        width: 100%;
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 4px;
+      }
+
+      .brush-btn {
+        padding: 6px 4px;
+        min-width: 0;
+        width: 100%;
+        font-size: 11px;
+        justify-content: center;
+        gap: 4px;
+      }
+
+      .bottom-bar {
+        width: 100%;
+        flex-direction: column;
+        padding: 6px 8px;
+        gap: 6px;
+      }
+
+      .btn-group {
+        width: 100%;
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 2px;
+        padding: 2px;
+      }
+
+      .dock-controls-subgroup {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 6px;
+      }
+
+      .palette-group {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: space-around;
+        padding: 2px;
+        gap: 0;
+      }
+
+      .swatch-wrapper {
+        min-width: 32px;
+        width: clamp(32px, 5vw, 40px);
+        height: 40px;
+      }
+
+      .brush-size-control {
+        width: clamp(55px, 12vw, 75px);
+        flex-shrink: 0;
+      }
+
+      .time-control-dock {
+        display: none; /* Managed in Tuning panel & mobile menu */
+      }
+
+      #btn-toggle-tuning {
+        width: 40px;
+        height: 40px;
+        min-width: 40px;
+        min-height: 40px;
+        flex-shrink: 0;
+      }
+    }
+
+    /* Mobile Breakpoint (max-width: 480px) */
+    @media (max-width: 480px) {
+      .ui-layer {
+        padding: max(6px, var(--safe-top)) max(6px, var(--safe-right)) max(6px, var(--safe-bottom)) max(6px, var(--safe-left));
+      }
+
+      .header-bar {
+        padding: 4px 6px;
+      }
+
+      .brand-icon {
+        width: 32px;
+        height: 32px;
+      }
+
+      .brand-icon svg {
+        width: 18px;
+        height: 18px;
+      }
+
+      .brand-text h1 {
+        font-size: 13px;
+      }
+
+      .toolbar-label {
+        display: none;
+      }
+
+      .brush-btn {
+        padding: 6px 2px;
+      }
+
+      .brush-btn span:not(.brush-icon) {
+        font-size: 10.5px;
+      }
+
+      .controls-panel, .presets-drawer {
+        width: calc(100vw - 16px);
+        bottom: calc(125px + var(--safe-bottom));
+      }
+
+      .zen-hint {
+        font-size: 10px;
+        padding: 4px 10px;
+        bottom: max(6px, var(--safe-bottom));
+        right: max(6px, var(--safe-right));
+      }
+
+      .mobile-header-actions .btn-icon-only {
+        width: 40px;
+        height: 40px;
+        min-width: 40px;
+        min-height: 40px;
+      }
+    }
+
+    /* Small Mobile Breakpoint (max-width: 360px - e.g. iPhone SE 320px) */
+    @media (max-width: 360px) {
+      .brand-text h1 .full-title {
+        display: none;
+      }
+      .brand-text h1 .short-title {
+        display: inline !important;
+      }
+
+      .brand-text h1 {
+        font-size: 12.5px;
+      }
+
+      .mobile-header-actions .btn-icon-only {
+        width: 38px;
+        height: 38px;
+        min-width: 38px;
+        min-height: 38px;
+      }
+
+      .brush-btn span:not(.brush-icon) {
+        display: none;
+      }
+
+      .brush-btn {
+        padding: 8px 0;
+      }
+
+      .swatch-wrapper {
+        width: 28px;
+        height: 38px;
+        min-width: 28px;
+      }
+
+      .swatch {
+        width: 20px;
+        height: 20px;
+      }
+
+      .brush-size-control {
+        width: 48px;
+      }
+
+      #btn-toggle-tuning {
+        width: 38px;
+        height: 38px;
+        min-width: 38px;
+        min-height: 38px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Shutter Flash Effect for Screenshot -->
+  <div id="shutter-flash" class="shutter-flash"></div>
+
+  <!-- Ambient Dynamic Starfield & Glow Canvas -->
+  <canvas id="bg-canvas"></canvas>
+
+  <!-- Main Physics & Drawing Canvas -->
+  <canvas id="canvas"></canvas>
+
+  <!-- UI Overlay Layer -->
+  <div class="ui-layer" id="ui-layer">
+    
+    <!-- Top Bar -->
+    <header class="header-bar glass-panel interactive">
+      <div class="brand-group">
+        <div class="brand-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3" fill="#00f0ff" stroke="#00f0ff"/>
+            <path d="M12 2a10 10 0 0 0-7.07 17.07l1.41-1.41A8 8 0 0 1 12 4v-2z" stroke="#ff007f"/>
+            <path d="M12 22a10 10 0 0 0 7.07-17.07l-1.41 1.41A8 8 0 0 1 12 20v2z" stroke="#00f0ff"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h1>
+            <span class="full-title">Gravity Sketch</span>
+            <span class="short-title" style="display:none;">G-Sketch</span>
+            <span class="badge-tag">PHYSICS ENGINE</span>
+          </h1>
+        </div>
+      </div>
+
+      <!-- Live Performance & Entity Stats (Feature 7: Live Particle Counter) -->
+      <div class="stats-pill" id="stats-pill">
+        <div class="stat-item tooltip tooltip-down" data-tooltip="Frames Per Second">
+          <div class="stat-dot" id="fps-dot"></div>
+          <span id="fps-counter" class="stat-value">60</span> <span class="stat-label">FPS</span>
+        </div>
+        <div class="stat-item tooltip tooltip-down" data-tooltip="Live Active Particles & Nodes">
+          <span style="color: var(--neon-cyan);">⚡</span>
+          <span id="particle-counter" class="stat-value">0</span> <span class="stat-label">PARTICLES</span>
+        </div>
+        <div class="stat-item tooltip tooltip-down" data-tooltip="Current Simulation Speed">
+          <span style="color: var(--neon-yellow);">⏱️</span>
+          <span id="speed-pill" class="stat-value">1.0x</span>
+        </div>
+      </div>
+
+      <!-- Desktop Top Utility Controls -->
+      <div class="header-actions">
+        <!-- Preset Physics Playgrounds -->
+        <button id="btn-presets" class="btn tooltip tooltip-down" data-tooltip="Physics Playgrounds">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="5 3 19 12 5 21 5 3"/>
+          </svg>
+          <span>Presets</span>
+        </button>
+
+        <!-- Feature 2: Gravity Toggle button to flip gravity upward -->
+        <button id="btn-gravity-flip" class="btn tooltip tooltip-down" data-tooltip="Flip Gravity Direction (G)">
+          <svg id="icon-gravity-arrow" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <polyline points="19 12 12 19 5 12"></polyline>
+          </svg>
+          <span id="label-gravity">Gravity</span>
+        </button>
+
+        <!-- Feature 4: Background Trail Effect toggle (fading ghost trails) -->
+        <button id="btn-ghost-trails" class="btn tooltip tooltip-down" data-tooltip="Fading Ghost Trails Effect (T)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2a9 9 0 0 0-9 9c0 4.17 2.84 7.67 6.69 8.69L12 22l2.31-2.31C18.16 18.67 21 15.17 21 11a9 9 0 0 0-9-9z"/>
+            <circle cx="9" cy="10" r="1.5" fill="currentColor"/>
+            <circle cx="15" cy="10" r="1.5" fill="currentColor"/>
+          </svg>
+          <span>Trails</span>
+        </button>
+
+        <!-- Feature 5: Sound Toggle via Web Audio API -->
+        <button id="btn-sound" class="btn btn-icon-only tooltip tooltip-down" data-tooltip="Mute / Unmute Synth Audio (M)">
+          <svg id="icon-sound-on" viewBox="0 0 24 24">
+            <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+          </svg>
+          <svg id="icon-sound-off" viewBox="0 0 24 24" style="display: none;">
+            <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27l4.73 4.73H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>
+          </svg>
+        </button>
+
+        <!-- Play / Pause Physics -->
+        <button id="btn-pause" class="btn btn-icon-only tooltip tooltip-down" data-tooltip="Pause/Play Physics (Space)">
+          <svg id="icon-pause" viewBox="0 0 24 24">
+            <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+          </svg>
+          <svg id="icon-play" viewBox="0 0 24 24" style="display: none;">
+            <path d="M8 5v14l11-7z"/>
+          </svg>
+        </button>
+
+        <!-- Undo Stroke -->
+        <button id="btn-undo" class="btn btn-icon-only tooltip tooltip-down" data-tooltip="Undo Last Stroke (Ctrl+Z)">
+          <svg viewBox="0 0 24 24">
+            <path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/>
+          </svg>
+        </button>
+
+        <!-- Feature 6: Screenshot button to export canvas as PNG -->
+        <button id="btn-save" class="btn btn-primary tooltip tooltip-down" data-tooltip="Export Canvas Screenshot PNG (S)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+            <circle cx="12" cy="13" r="4"></circle>
+          </svg>
+          <span>Screenshot</span>
+        </button>
+
+        <!-- Feature 8: Shake to Clear button (particles vibrate then disappear) -->
+        <button id="btn-shake-clear" class="btn btn-warning tooltip tooltip-down" data-tooltip="Shake to Clear: Vibrates & Vaporizes (X)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M2 12h2m16 0h2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M4.93 19.07l1.41-1.41m11.32-11.32l1.41-1.41"></path>
+            <circle cx="12" cy="12" r="5"></circle>
+          </svg>
+          <span>Shake Clear</span>
+        </button>
+
+        <!-- Instant Clear Canvas -->
+        <button id="btn-clear" class="btn btn-danger btn-icon-only tooltip tooltip-down" data-tooltip="Instant Clear Canvas (C)">
+          <svg viewBox="0 0 24 24">
+            <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+          </svg>
+        </button>
+
+        <!-- Help Modal Button -->
+        <button id="btn-help" class="btn btn-icon-only tooltip tooltip-down" data-tooltip="Shortcuts & Info (?)">
+          <svg viewBox="0 0 24 24">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 16h-2v-2h2v2zm1.07-7.75l-.9.92C12.45 11.9 12 12.5 12 14h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H7c0-2.76 2.24-5 5-5s5 2.24 5 5c0 1.04-.42 1.99-1.07 2.75z"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Mobile Top Quick Bar (Under 768px): Undo, Pause, Clear, Hamburger Menu -->
+      <div class="mobile-header-actions">
+        <!-- Undo Button -->
+        <button id="btn-mobile-undo" class="btn btn-icon-only" aria-label="Undo Stroke" title="Undo Last Stroke">
+          <svg viewBox="0 0 24 24">
+            <path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/>
+          </svg>
+        </button>
+
+        <!-- Pause / Play Button -->
+        <button id="btn-mobile-pause" class="btn btn-icon-only" aria-label="Pause/Resume Physics" title="Pause / Play">
+          <svg id="icon-mobile-pause" viewBox="0 0 24 24">
+            <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+          </svg>
+          <svg id="icon-mobile-play" viewBox="0 0 24 24" style="display: none;">
+            <path d="M8 5v14l11-7z"/>
+          </svg>
+        </button>
+
+        <!-- Instant Clear -->
+        <button id="btn-mobile-clear" class="btn btn-icon-only btn-danger" aria-label="Clear Canvas" title="Clear Canvas">
+          <svg viewBox="0 0 24 24">
+            <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+          </svg>
+        </button>
+
+        <!-- Mobile Hamburger / More Menu Trigger Button -->
+        <button id="btn-mobile-menu" class="btn btn-icon-only btn-primary" aria-label="Open Controls Menu" title="More Options">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Presets Quick Popout -->
+    <div id="presets-drawer" class="presets-drawer glass-panel interactive">
+      <div class="panel-header">
+        <h3>Playgrounds</h3>
+        <button id="btn-close-presets" class="btn btn-icon-only" style="width: 32px; height: 32px; min-width: 32px; min-height: 32px; border: none; background: transparent;" aria-label="Close Playgrounds">✕</button>
+      </div>
+      <button class="preset-btn" data-preset="pachinko">
+        <span>📍</span> Pachinko Cascade
+      </button>
+      <button class="preset-btn" data-preset="funnels">
+        <span>⚡</span> Neon Funnel Run
+      </button>
+      <button class="preset-btn" data-preset="nebula">
+        <span>🌌</span> Zero-G Nebula Swirl
+      </button>
+      <button class="preset-btn" data-preset="chains">
+        <span>⛓️</span> Elastic Rope Curtain
+      </button>
+      <button class="preset-btn" data-preset="fireworks">
+        <span>🎆</span> Fireworks Fountain
+      </button>
+    </div>
+
+    <!-- Physics & Environment Tuning Panel -->
+    <div id="controls-panel" class="controls-panel glass-panel interactive">
+      <div class="panel-header">
+        <h3>Physics Tuning</h3>
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <button id="btn-reset-physics" class="btn" style="padding: 2px 8px; font-size: 11px; min-height: 32px; min-width: auto;">Reset</button>
+          <button id="btn-close-tuning" class="btn btn-icon-only" style="width: 32px; height: 32px; min-width: 32px; min-height: 32px; border: none; background: transparent;" aria-label="Close Tuning">✕</button>
+        </div>
+      </div>
+
+      <!-- Gravity Slider -->
+      <div class="control-row">
+        <div class="control-label">
+          <span>Gravity Force</span>
+          <span class="val" id="val-gravity">9.8 m/s²</span>
+        </div>
+        <input type="range" id="slider-gravity" min="-25" max="35" step="0.5" value="9.8">
+      </div>
+
+      <!-- Feature 3: Time Slow-Mo slider (0.1x to 3x speed) in tuning panel -->
+      <div class="control-row">
+        <div class="control-label">
+          <span>Simulation Speed (Slow-Mo)</span>
+          <span class="val" id="val-timescale">1.0x</span>
+        </div>
+        <input type="range" id="panel-slider-timescale" min="0.1" max="3.0" step="0.1" value="1.0">
+        <div class="speed-chips">
+          <button class="chip-btn" data-speed="0.25">0.25x</button>
+          <button class="chip-btn" data-speed="0.5">0.5x</button>
+          <button class="chip-btn active" data-speed="1.0">1.0x</button>
+          <button class="chip-btn" data-speed="2.0">2.0x</button>
+        </div>
+      </div>
+
+      <!-- Restitution (Bounce) -->
+      <div class="control-row">
+        <div class="control-label">
+          <span>Elastic Bounce</span>
+          <span class="val" id="val-bounce">0.70</span>
+        </div>
+        <input type="range" id="slider-bounce" min="0.0" max="0.98" step="0.02" value="0.70">
+      </div>
+
+      <!-- Air Resistance / Viscosity -->
+      <div class="control-row">
+        <div class="control-label">
+          <span>Air Friction (Drag)</span>
+          <span class="val" id="val-friction">0.015</span>
+        </div>
+        <input type="range" id="slider-friction" min="0.00" max="0.10" step="0.002" value="0.015">
+      </div>
+
+      <!-- Particle Lifespan -->
+      <div class="control-row">
+        <div class="control-label">
+          <span>Decay / Lifespan</span>
+          <span class="val" id="val-life">18s</span>
+        </div>
+        <input type="range" id="slider-life" min="3" max="60" step="1" value="18">
+      </div>
+
+      <!-- Horizontal Wind -->
+      <div class="control-row">
+        <div class="control-label">
+          <span>Wind Breeze</span>
+          <span class="val" id="val-wind">0.0</span>
+        </div>
+        <input type="range" id="slider-wind" min="-10" max="10" step="0.5" value="0">
+      </div>
+
+      <!-- Feature 4: Ghost Trails toggle in panel -->
+      <div class="toggle-row">
+        <span>Fading Ghost Trails</span>
+        <label class="switch">
+          <input type="checkbox" id="check-ghost-trails">
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <!-- Particle Trails Glow Switch -->
+      <div class="toggle-row">
+        <span>Neon Stroke Light Trails</span>
+        <label class="switch">
+          <input type="checkbox" id="check-trails" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <!-- Screen Wall Bounce Switch -->
+      <div class="toggle-row">
+        <span>Bounce Off Screen Edges</span>
+        <label class="switch">
+          <input type="checkbox" id="check-walls" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Bottom Dock: Brush Selector + Tools & Color Palette -->
+    <div class="dock-container">
+
+      <!-- Feature 1: Brush Selector toolbar with 5 types (Wraps/Scrolls seamlessly) -->
+      <div class="brush-bar glass-panel interactive">
+        <span class="toolbar-label">BRUSH</span>
+        <div class="brush-group">
+          <!-- 1. Normal -->
+          <button class="brush-btn active tooltip" data-brush="normal" data-tooltip="Normal: Standard physics particles (Shift+1)">
+            <span class="brush-icon">⚪</span>
+            <span>Normal</span>
+          </button>
+          <!-- 2. Fire -->
+          <button class="brush-btn tooltip" data-brush="fire" data-tooltip="Fire: Orange/red flickering embers & heat lift (Shift+2)">
+            <span class="brush-icon">🔥</span>
+            <span>Fire</span>
+          </button>
+          <!-- 3. Ice -->
+          <button class="brush-btn tooltip" data-brush="ice" data-tooltip="Ice: Blue/white crystals that freeze in place (Shift+3)">
+            <span class="brush-icon">❄️</span>
+            <span>Ice</span>
+          </button>
+          <!-- 4. Rainbow -->
+          <button class="brush-btn tooltip" data-brush="rainbow" data-tooltip="Rainbow: Cycling chromatic spectrum flow (Shift+4)">
+            <span class="brush-icon">🌈</span>
+            <span>Rainbow</span>
+          </button>
+          <!-- 5. Explode -->
+          <button class="brush-btn tooltip" data-brush="explode" data-tooltip="Explode: Accumulates & bursts outward on release (Shift+5)">
+            <span class="brush-icon">💥</span>
+            <span>Explode</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Main Bottom Dock Controls -->
+      <div class="bottom-bar glass-panel interactive">
+
+        <!-- Active Mode / Physics Style (7 Tools) -->
+        <div class="btn-group">
+          <!-- Drops -->
+          <button class="tool-btn active tooltip" data-tool="drops" data-tooltip="Neon Drops (1)">
+            <svg viewBox="0 0 24 24"><path d="M12 2c-4 5-8 9-8 13 0 4.4 3.6 8 8 8s8-3.6 8-8c0-4-4-8-8-13zm0 18c-3.3 0-6-2.7-6-6 0-2.8 2.8-6 6-9.5 3.2 3.5 6 6.7 6 9.5 0 3.3-2.7 6-6 6z"/></svg>
+            <span>Drops</span>
+          </button>
+          <!-- Rope -->
+          <button class="tool-btn tooltip" data-tool="ropes" data-tooltip="Elastic Rope (2)">
+            <svg viewBox="0 0 24 24"><path d="M4 6c0-1.1.9-2 2-2s2 .9 2 2-.9 2-2 2-2-.9-2-2zm12 12c0-1.1.9-2 2-2s2 .9 2 2-.9 2-2 2-2-.9-2-2zm-6-6c0-1.1.9-2 2-2s2 .9 2 2-.9 2-2 2-2-.9-2-2zM7.4 7.4l3.2 3.2m2.8 2.8l3.2 3.2" stroke="currentColor" stroke-width="2"/></svg>
+            <span>Rope</span>
+          </button>
+          <!-- Sparks -->
+          <button class="tool-btn tooltip" data-tool="sparks" data-tooltip="Sparks / Fireworks (3)">
+            <svg viewBox="0 0 24 24"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>
+            <span>Sparks</span>
+          </button>
+          <!-- Platform -->
+          <button class="tool-btn tooltip" data-tool="platform" data-tooltip="Solid Barrier / Ramp (4)">
+            <svg viewBox="0 0 24 24"><path d="M19 13H5v-2h14v2z" stroke="currentColor" stroke-width="3"/></svg>
+            <span>Platform</span>
+          </button>
+          <!-- Attract -->
+          <button class="tool-btn tooltip" data-tool="attractor" data-tooltip="Black Hole / Gravity Well (5)">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5" fill="currentColor"/><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3 3"/></svg>
+            <span>Attract</span>
+          </button>
+          <!-- Repel -->
+          <button class="tool-btn tooltip" data-tool="repulsor" data-tooltip="Repulsor Shockwave (6)">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" fill="currentColor"/><path d="M12 5V1M12 23v-4M5 12H1M23 12h-4" stroke="currentColor" stroke-width="2"/></svg>
+            <span>Repel</span>
+          </button>
+          <!-- Eraser -->
+          <button class="tool-btn tooltip" data-tool="eraser" data-tooltip="Particle Eraser (7)">
+            <svg viewBox="0 0 24 24"><path d="M15.14 3c-.4 0-.8.15-1.1.45L2.45 15.05c-.6.6-.6 1.55 0 2.15l4.35 4.35c.3.3.7.45 1.1.45h9.6v-2h-6.1l9.15-9.15c.6-.6.6-1.55 0-2.15l-4.35-4.35c-.3-.3-.7-.45-1.1-.45zM8.35 19.55L4.5 15.7 13 7.2l3.85 3.85-8.5 8.5z"/></svg>
+            <span>Eraser</span>
+          </button>
+        </div>
+
+        <div class="divider desktop-only"></div>
+
+        <!-- Subgroup for Palette, Size, Time, Tuning -->
+        <div class="dock-controls-subgroup">
+          <!-- Color Palette Picker (Full Touch Targets) -->
+          <div class="palette-group">
+            <!-- Dynamic Cycling Rainbow -->
+            <button class="swatch-wrapper active tooltip" data-palette="rainbow" data-tooltip="Dynamic Rainbow Flow" aria-label="Rainbow Palette">
+              <span class="swatch swatch-rainbow"></span>
+            </button>
+            <!-- Neon Swatches -->
+            <button class="swatch-wrapper tooltip" data-palette="#00f0ff" data-tooltip="Electric Cyan" aria-label="Electric Cyan Palette">
+              <span class="swatch" style="background: #00f0ff; color: #00f0ff;"></span>
+            </button>
+            <button class="swatch-wrapper tooltip" data-palette="#ff007f" data-tooltip="Neon Hot Pink" aria-label="Neon Hot Pink Palette">
+              <span class="swatch" style="background: #ff007f; color: #ff007f;"></span>
+            </button>
+            <button class="swatch-wrapper tooltip" data-palette="#ffe600" data-tooltip="Hyper Yellow" aria-label="Hyper Yellow Palette">
+              <span class="swatch" style="background: #ffe600; color: #ffe600;"></span>
+            </button>
+            <button class="swatch-wrapper tooltip" data-palette="#00ff88" data-tooltip="Radioactive Lime" aria-label="Radioactive Lime Palette">
+              <span class="swatch" style="background: #00ff88; color: #00ff88;"></span>
+            </button>
+            <button class="swatch-wrapper tooltip" data-palette="#9d4edd" data-tooltip="Cosmic Purple" aria-label="Cosmic Purple Palette">
+              <span class="swatch" style="background: #9d4edd; color: #9d4edd;"></span>
+            </button>
+            <button class="swatch-wrapper tooltip" data-palette="#ffffff" data-tooltip="Pure Starlight" aria-label="Pure White Palette">
+              <span class="swatch" style="background: #ffffff; color: #ffffff;"></span>
+            </button>
+          </div>
+
+          <div class="divider desktop-only"></div>
+
+          <!-- Brush Thickness Slider -->
+          <div class="brush-size-control tooltip" data-tooltip="Brush Size">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;"><circle cx="12" cy="12" r="10"/></svg>
+            <input type="range" id="slider-size" min="3" max="32" step="1" value="10" aria-label="Brush Thickness">
+          </div>
+
+          <div class="divider desktop-only"></div>
+
+          <!-- Feature 3: Time Slow-Mo slider (0.1x to 3x speed) in Dock -->
+          <div class="time-control-dock tooltip" data-tooltip="Time Slow-Mo Speed (0.1x to 3x)">
+            <span class="dock-label">TIME</span>
+            <span id="dock-val-time" class="time-val">1.0x</span>
+            <input type="range" id="slider-timescale" min="0.1" max="3.0" step="0.1" value="1.0" class="time-range-input" aria-label="Simulation Time Scale">
+          </div>
+
+          <div class="divider desktop-only"></div>
+
+          <!-- Physics Tuning Toggle Button -->
+          <button id="btn-toggle-tuning" class="btn btn-icon-only tooltip" data-tooltip="Physics Tuning Controls" aria-label="Toggle Physics Tuning Panel">
+            <svg viewBox="0 0 24 24">
+              <path d="M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z"/>
+            </svg>
+          </button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Mobile Collapsible Slide-Out Drawer (Contains All Non-Essential Mobile Controls) -->
+  <div class="mobile-menu-backdrop" id="mobile-menu-backdrop">
+    <div class="mobile-menu-drawer" id="mobile-menu-drawer">
+      <div class="mobile-menu-header">
+        <h2>⚡ Gravity Controls</h2>
+        <button id="btn-close-mobile-menu" class="btn btn-icon-only" style="border:none; background:transparent;" aria-label="Close Menu">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <!-- Quick Toggles -->
+      <div class="menu-section">
+        <span class="menu-section-title">SIMULATION DYNAMICS</span>
+        
+        <button id="drawer-btn-gravity" class="drawer-item">
+          <div class="drawer-item-left">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
+            <span>Invert Gravity</span>
+          </div>
+          <span id="drawer-label-gravity" class="drawer-item-badge">Down (9.8)</span>
+        </button>
+
+        <button id="drawer-btn-trails" class="drawer-item">
+          <div class="drawer-item-left">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2a9 9 0 0 0-9 9c0 4.17 2.84 7.67 6.69 8.69L12 22l2.31-2.31C18.16 18.67 21 15.17 21 11a9 9 0 0 0-9-9z"/></svg>
+            <span>Ghost Trails</span>
+          </div>
+          <span id="drawer-label-trails" class="drawer-item-badge">Off</span>
+        </button>
+
+        <button id="drawer-btn-sound" class="drawer-item">
+          <div class="drawer-item-left">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/></svg>
+            <span>Synth Audio</span>
+          </div>
+          <span id="drawer-label-sound" class="drawer-item-badge">Active</span>
+        </button>
+      </div>
+
+      <!-- Playgrounds -->
+      <div class="menu-section">
+        <span class="menu-section-title">PHYSICS PLAYGROUNDS</span>
+        <button class="drawer-item drawer-preset-btn" data-preset="pachinko">
+          <div class="drawer-item-left"><span>📍</span><span>Pachinko Cascade</span></div>
+        </button>
+        <button class="drawer-item drawer-preset-btn" data-preset="funnels">
+          <div class="drawer-item-left"><span>⚡</span><span>Neon Funnel Run</span></div>
+        </button>
+        <button class="drawer-item drawer-preset-btn" data-preset="nebula">
+          <div class="drawer-item-left"><span>🌌</span><span>Zero-G Nebula</span></div>
+        </button>
+        <button class="drawer-item drawer-preset-btn" data-preset="chains">
+          <div class="drawer-item-left"><span>⛓️</span><span>Elastic Rope Curtain</span></div>
+        </button>
+        <button class="drawer-item drawer-preset-btn" data-preset="fireworks">
+          <div class="drawer-item-left"><span>🎆</span><span>Fireworks Fountain</span></div>
+        </button>
+      </div>
+
+      <!-- Actions -->
+      <div class="menu-section">
+        <span class="menu-section-title">ACTIONS &amp; TOOLS</span>
+
+        <button id="drawer-btn-screenshot" class="drawer-item">
+          <div class="drawer-item-left">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+            <span>Save Screenshot</span>
+          </div>
+          <span class="drawer-item-badge">PNG</span>
+        </button>
+
+        <button id="drawer-btn-shake" class="drawer-item" style="color: #ffaa00;">
+          <div class="drawer-item-left">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"></circle><path d="M2 12h2m16 0h2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M4.93 19.07l1.41-1.41m11.32-11.32l1.41-1.41"></path></svg>
+            <span>Shake to Clear</span>
+          </div>
+          <span class="drawer-item-badge">Vibrate</span>
+        </button>
+
+        <button id="drawer-btn-tuning" class="drawer-item">
+          <div class="drawer-item-left">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z"/></svg>
+            <span>Tuning Sliders</span>
+          </div>
+        </button>
+
+        <button id="drawer-btn-help" class="drawer-item">
+          <div class="drawer-item-left">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 16h-2v-2h2v2zm1.07-7.75l-.9.92C12.45 11.9 12 12.5 12 14h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H7c0-2.76 2.24-5 5-5s5 2.24 5 5c0 1.04-.42 1.99-1.07 2.75z"/></svg>
+            <span>Guide &amp; Shortcuts</span>
+          </div>
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Zen Mode Floating Shortcut -->
+  <div class="zen-hint" id="zen-hint" title="Toggle interface visibility">
+    <span>Zen Mode (<strong>H</strong>)</span>
+  </div>
+
+  <!-- Toast Notification Alert -->
+  <div class="toast" id="toast">
+    <span id="toast-text">Message</span>
+  </div>
+
+  <!-- Keyboard Shortcuts & Touch Guide Modal -->
+  <div class="modal-backdrop" id="help-modal">
+    <div class="modal-card">
+      <h2>
+        <span>Gravity Sketch Guide</span>
+        <button id="btn-close-modal" class="btn btn-icon-only" style="border:none; background:transparent;" aria-label="Close Guide">
+          <svg width="20" height="20" viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" fill="currentColor"/></svg>
+        </button>
+      </h2>
+      <div class="shortcut-list">
+        <div class="shortcut-item">
+          <span>Draw Colorful Strokes</span>
+          <kbd>Touch / Drag</kbd>
+        </div>
+        <div class="shortcut-item">
+          <span>Brush Types (Normal, Fire, Ice, Rainbow, Explode)</span>
+          <kbd>Shift + 1-5 / B</kbd>
+        </div>
+        <div class="shortcut-item">
+          <span>Select Tools (Drops, Rope, Sparks, Platform, etc.)</span>
+          <kbd>1 - 7</kbd>
+        </div>
+        <div class="shortcut-item">
+          <span>Flip Gravity Direction (Up / Down)</span>
+          <kbd>G</kbd>
+        </div>
+        <div class="shortcut-item">
+          <span>Time Slow-Mo Speed (Decrease / Increase)</span>
+          <kbd>[ / ]</kbd>
+        </div>
+        <div class="shortcut-item">
+          <span>Toggle Fading Ghost Trails</span>
+          <kbd>T</kbd>
+        </div>
+        <div class="shortcut-item">
+          <span>Shake to Clear (Vibrates &amp; Vaporizes)</span>
+          <kbd>X / Shake Device</kbd>
+        </div>
+        <div class="shortcut-item">
+          <span>Pause / Resume Simulation</span>
+          <kbd>Space</kbd>
+        </div>
+        <div class="shortcut-item">
+          <span>Undo Last Stroke</span>
+          <kbd>Ctrl + Z</kbd>
+        </div>
+        <div class="shortcut-item">
+          <span>Export Screenshot PNG</span>
+          <kbd>S</kbd>
+        </div>
+        <div class="shortcut-item">
+          <span>Instant Clear Canvas</span>
+          <kbd>C</kbd>
+        </div>
+        <div class="shortcut-item">
+          <span>Toggle Synth Audio</span>
+          <kbd>M</kbd>
+        </div>
+        <div class="shortcut-item">
+          <span>Toggle UI (Zen Mode)</span>
+          <kbd>H</kbd>
+        </div>
+      </div>
+      <p style="font-size: 12px; color: var(--text-dim); line-height: 1.5;">
+        Gravity Sketch turns your cursor or touch into a vibrant physics particle fountain. Switch between Fire (heat lift &amp; embers), Ice (freezes in place), Rainbow (cycling spectrum), and Explode (charges &amp; detonates on release). Fully responsive for all phones, tablets, and desktop screens!
+      </p>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       Pure Vanilla JavaScript Engine
+       ========================================================================== -->
+  <script>
+    /**
+     * Gravity Sketch - High Performance Interactive Physics Canvas
+     * Fully Responsive Engine with Dynamic Particle Scaling & Touch Mapping
+     * Pure HTML5 Canvas, Web Audio API & Modern JavaScript (ES6+)
+     * Zero external libraries or dependencies.
+     */
+    (function () {
+      'use strict';
+
+      /* ==========================================================================
+         Configuration & State
+         ========================================================================== */
+      const CONFIG = {
+        maxParticles: 4500,        // Dynamically scaled based on screen resolution
+        subSteps: 2,               // Physics sub-stepping for smooth stability
+        defaultGravity: 9.8,
+        defaultBounce: 0.70,
+        defaultFriction: 0.015,
+        defaultLife: 18,           // Seconds
+        defaultWind: 0.0,
+        ropeNodeSpacing: 14,
+        ropeStiffness: 4,          // Relaxation iterations
+        soundEnabled: true,
+        glowTrails: true,
+        bounceWalls: true
+      };
+
+      const STATE = {
+        tool: 'drops',             // 'drops' | 'ropes' | 'sparks' | 'platform' | 'attractor' | 'repulsor' | 'eraser'
+        brushType: 'normal',       // 'normal' | 'fire' | 'ice' | 'rainbow' | 'explode'
+        palette: 'rainbow',        // 'rainbow' | hex color string
+        brushSize: 10,
+        gravity: CONFIG.defaultGravity,
+        bounce: CONFIG.defaultBounce,
+        friction: CONFIG.defaultFriction,
+        lifeTime: CONFIG.defaultLife,
+        wind: CONFIG.defaultWind,
+        timeScale: 1.0,            // Feature 3: Slow-Mo (0.1x to 3.0x)
+        ghostTrails: false,        // Feature 4: Background fading ghost trails
+        isPaused: false,
+        soundMuted: false,
+        trails: true,
+        bounceWalls: true,
+        uiVisible: true,
+        
+        // Pointer state
+        pointer: {
+          x: 0,
+          y: 0,
+          prevX: 0,
+          prevY: 0,
+          down: false,
+          active: false,
+          speed: 0
+        },
+
+        platformStart: null,
+        activeRope: null,
+        currentChargedStroke: []
+      };
+
+      /* ==========================================================================
+         Feature 5: Synthesized Audio Engine (Web Audio API)
+         ========================================================================== */
+      class SoundEngine {
+        constructor() {
+          this.ctx = null;
+          this.enabled = true;
+          this.lastToneTime = 0;
+          this.scale = [
+            130.81, 146.83, 164.81, 196.00, 220.00, // C3
+            261.63, 293.66, 329.63, 392.00, 440.00, // C4
+            523.25, 587.33, 659.25, 783.99, 880.00, // C5
+            1046.50                                  // C6
+          ];
+        }
+
+        init() {
+          if (!this.ctx) {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            if (AudioContext) {
+              this.ctx = new AudioContext();
+            }
+          }
+          if (this.ctx && this.ctx.state === 'suspended') {
+            this.ctx.resume();
+          }
+        }
+
+        // Feature 5: Synth tones, pitch by Y, volume by speed
+        playBrushTone(yRatio, speedRatio = 1, brushType = 'normal') {
+          if (!this.enabled || STATE.soundMuted) return;
+          this.init();
+          if (!this.ctx) return;
+
+          const now = this.ctx.currentTime;
+          if (now - this.lastToneTime < 0.04) return;
+          this.lastToneTime = now;
+
+          try {
+            const normalizedY = 1 - Math.max(0, Math.min(1, yRatio));
+            const noteIndex = Math.floor(normalizedY * (this.scale.length - 1));
+            const freq = this.scale[noteIndex] || 440;
+
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            const baseVol = Math.min(0.18, Math.max(0.025, 0.04 + Math.min(speedRatio, 3) * 0.04));
+
+            if (brushType === 'fire') {
+              osc.type = 'sawtooth';
+              const filter = this.ctx.createBiquadFilter();
+              filter.type = 'lowpass';
+              filter.frequency.setValueAtTime(650 + normalizedY * 900, now);
+              osc.frequency.setValueAtTime(freq * 0.75 + (Math.random() - 0.5) * 35, now);
+              
+              gain.gain.setValueAtTime(0, now);
+              gain.gain.linearRampToValueAtTime(baseVol * 0.7, now + 0.015);
+              gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.16);
+
+              osc.connect(filter);
+              filter.connect(gain);
+            } else if (brushType === 'ice') {
+              osc.type = 'sine';
+              osc.frequency.setValueAtTime(freq * 1.5, now);
+              gain.gain.setValueAtTime(0, now);
+              gain.gain.linearRampToValueAtTime(baseVol * 0.85, now + 0.01);
+              gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.35);
+              osc.connect(gain);
+            } else if (brushType === 'rainbow') {
+              osc.type = 'triangle';
+              osc.frequency.setValueAtTime(freq, now);
+              osc.frequency.linearRampToValueAtTime(freq * 1.25, now + 0.12);
+              gain.gain.setValueAtTime(0, now);
+              gain.gain.linearRampToValueAtTime(baseVol, now + 0.015);
+              gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
+              osc.connect(gain);
+            } else if (brushType === 'explode') {
+              osc.type = 'triangle';
+              osc.frequency.setValueAtTime(freq * 0.5 + Math.random() * 20, now);
+              gain.gain.setValueAtTime(0, now);
+              gain.gain.linearRampToValueAtTime(baseVol * 0.6, now + 0.01);
+              gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.15);
+              osc.connect(gain);
+            } else {
+              osc.type = 'sine';
+              osc.frequency.setValueAtTime(freq, now);
+              gain.gain.setValueAtTime(0, now);
+              gain.gain.linearRampToValueAtTime(baseVol, now + 0.015);
+              gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
+              osc.connect(gain);
+            }
+
+            gain.connect(this.ctx.destination);
+            osc.start(now);
+            osc.stop(now + 0.36);
+          } catch (e) {}
+        }
+
+        playExplosion() {
+          if (!this.enabled || STATE.soundMuted) return;
+          this.init();
+          if (!this.ctx) return;
+          try {
+            const now = this.ctx.currentTime;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(160, now);
+            osc.frequency.exponentialRampToValueAtTime(32, now + 0.45);
+            gain.gain.setValueAtTime(0.24, now);
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.5);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now);
+            osc.stop(now + 0.52);
+          } catch (e) {}
+        }
+
+        playShakeRumble() {
+          if (!this.enabled || STATE.soundMuted) return;
+          this.init();
+          if (!this.ctx) return;
+          try {
+            const now = this.ctx.currentTime;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(50, now);
+            osc.frequency.linearRampToValueAtTime(220, now + 0.6);
+            gain.gain.setValueAtTime(0.06, now);
+            gain.gain.linearRampToValueAtTime(0.22, now + 0.5);
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.72);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now);
+            osc.stop(now + 0.75);
+          } catch (e) {}
+        }
+
+        playShutter() {
+          if (!this.enabled || STATE.soundMuted) return;
+          this.init();
+          if (!this.ctx) return;
+          try {
+            const now = this.ctx.currentTime;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(850, now);
+            osc.frequency.setValueAtTime(1400, now + 0.04);
+            gain.gain.setValueAtTime(0.12, now);
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now);
+            osc.stop(now + 0.14);
+          } catch (e) {}
+        }
+
+        playWarp(inverted) {
+          if (!this.enabled || STATE.soundMuted) return;
+          this.init();
+          if (!this.ctx) return;
+          try {
+            const now = this.ctx.currentTime;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'sine';
+            if (inverted) {
+              osc.frequency.setValueAtTime(220, now);
+              osc.frequency.exponentialRampToValueAtTime(880, now + 0.25);
+            } else {
+              osc.frequency.setValueAtTime(880, now);
+              osc.frequency.exponentialRampToValueAtTime(220, now + 0.25);
+            }
+            gain.gain.setValueAtTime(0.12, now);
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.28);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now);
+            osc.stop(now + 0.3);
+          } catch (e) {}
+        }
+
+        playBounce(intensity = 1) {
+          if (!this.enabled || STATE.soundMuted) return;
+          this.init();
+          if (!this.ctx) return;
+
+          const now = this.ctx.currentTime;
+          if (now - this.lastToneTime < 0.05) return;
+          this.lastToneTime = now;
+
+          try {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'triangle';
+            const baseFreq = 160 + Math.random() * 80;
+            osc.frequency.setValueAtTime(baseFreq, now);
+            osc.frequency.exponentialRampToValueAtTime(50, now + 0.08);
+
+            const vol = Math.min(0.09, 0.04 * Math.min(intensity, 2));
+            gain.gain.setValueAtTime(vol, now);
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.08);
+
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+
+            osc.start(now);
+            osc.stop(now + 0.09);
+          } catch (e) {}
+        }
+      }
+
+      const audio = new SoundEngine();
+
+      /* ==========================================================================
+         Color & Neon Shaders
+         ========================================================================== */
+      let rainbowHue = 0;
+
+      function getNextColor() {
+        if (STATE.brushType === 'fire') {
+          const fireColors = ['#ff2200', '#ff4d00', '#ff8000', '#ffb700', '#ffe600'];
+          return fireColors[Math.floor(Math.random() * fireColors.length)];
+        }
+        if (STATE.brushType === 'ice') {
+          const iceColors = ['#e0f7fa', '#b2ebf2', '#80deea', '#00e5ff', '#38bdf8', '#ffffff'];
+          return iceColors[Math.floor(Math.random() * iceColors.length)];
+        }
+        if (STATE.brushType === 'rainbow' || STATE.palette === 'rainbow') {
+          return `hsl(${rainbowHue % 360}, 100%, 65%)`;
+        }
+        return STATE.palette;
+      }
+
+      function hexToRgba(hex, alpha) {
+        if (!hex) return `rgba(255, 255, 255, ${alpha})`;
+        if (hex.startsWith('hsl')) {
+          return hex.replace(')', `, ${alpha})`).replace('hsl', 'hsla');
+        }
+        let c = hex.replace('#', '');
+        if (c.length === 3) c = c.split('').map(x => x + x).join('');
+        const num = parseInt(c, 16);
+        const r = (num >> 16) & 255;
+        const g = (num >> 8) & 255;
+        const b = num & 255;
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+      }
+
+      /* ==========================================================================
+         Physics Entity: Free Particle
+         ========================================================================== */
+      class Particle {
+        constructor(x, y, vx, vy, radius, color, maxLife, strokeId, options = {}) {
+          this.x = x;
+          this.y = y;
+          this.vx = vx;
+          this.vy = vy;
+          this.radius = radius;
+          this.baseRadius = radius;
+          this.color = color;
+          this.maxLife = maxLife;
+          this.life = maxLife;
+          this.strokeId = strokeId;
+          this.isSpark = options.isSpark || false;
+          this.brushType = options.brushType || 'normal';
+          this.trail = [];
+          this.maxTrail = this.isSpark ? 5 : (this.brushType === 'fire' ? 7 : 3);
+
+          this.seed = Math.random() * 1000;
+          this.isFrozen = false;
+          this.freezeDelay = options.freezeDelay !== undefined ? options.freezeDelay : 0.32;
+          this.isCharged = options.isCharged || false;
+          this.chargeAnchorX = x;
+          this.chargeAnchorY = y;
+          this.hue = options.hue || (rainbowHue % 360);
+        }
+
+        update(dt, width, height, obstacles, world) {
+          if (this.isCharged) {
+            this.x = this.chargeAnchorX + (Math.random() - 0.5) * 4;
+            this.y = this.chargeAnchorY + (Math.random() - 0.5) * 4;
+            return true;
+          }
+
+          if (world.isShaking) {
+            this.x += (Math.random() - 0.5) * 16;
+            this.y += (Math.random() - 0.5) * 16;
+            this.radius *= 0.96;
+            this.life -= dt * 3;
+            return this.life > 0 && this.radius > 0.4;
+          }
+
+          if (this.brushType === 'ice' && !this.isFrozen) {
+            this.freezeDelay -= dt;
+            if (this.freezeDelay <= 0) {
+              this.isFrozen = true;
+              this.vx = 0;
+              this.vy = 0;
+            }
+          }
+
+          if (this.isFrozen) {
+            this.vx = 0;
+            this.vy = 0;
+            this.life -= dt * 0.7;
+            return this.life > 0;
+          }
+
+          this.life -= dt;
+          if (this.life <= 0) return false;
+
+          if (this.brushType === 'rainbow') {
+            this.hue = (this.hue + 140 * dt) % 360;
+            this.color = `hsl(${this.hue}, 100%, 65%)`;
+          }
+
+          if (this.brushType === 'fire') {
+            this.vy -= (160 + Math.random() * 90) * dt;
+            this.vx += Math.sin(this.life * 14 + this.seed) * 45 * dt;
+            const flicker = 0.75 + 0.5 * Math.sin(Date.now() * 0.035 + this.seed);
+            this.radius = Math.max(1.2, this.baseRadius * flicker);
+          }
+
+          if (STATE.trails && Math.abs(this.vx) + Math.abs(this.vy) > 1.5) {
+            this.trail.push({ x: this.x, y: this.y });
+            if (this.trail.length > this.maxTrail) {
+              this.trail.shift();
+            }
+          } else {
+            this.trail.length = 0;
+          }
+
+          const gy = STATE.gravity * 70;
+          const gx = STATE.wind * 40;
+
+          this.vx += gx * dt;
+          this.vy += gy * dt;
+
+          const dragFactor = this.isSpark ? STATE.friction * 2 : (this.brushType === 'fire' ? STATE.friction * 1.5 : STATE.friction);
+          const drag = Math.pow(1 - dragFactor, dt * 60);
+          this.vx *= drag;
+          this.vy *= drag;
+
+          this.x += this.vx * dt;
+          this.y += this.vy * dt;
+
+          // Ground Collision
+          if (this.y + this.radius >= height) {
+            this.y = height - this.radius;
+            if (Math.abs(this.vy) > 15) {
+              audio.playBounce(Math.abs(this.vy) / 200);
+              if (!this.isSpark && Math.abs(this.vy) > 120 && world.particles.length < CONFIG.maxParticles) {
+                world.spawnSparks(this.x, this.y, 2, this.color);
+              }
+            }
+            this.vy = -this.vy * STATE.bounce;
+            this.vx *= 0.88;
+          }
+
+          // Ceiling Collision
+          if (this.y - this.radius <= 0) {
+            this.y = this.radius;
+            this.vy = -this.vy * STATE.bounce;
+          }
+
+          // Screen Border Collisions
+          if (STATE.bounceWalls) {
+            if (this.x - this.radius <= 0) {
+              this.x = this.radius;
+              this.vx = -this.vx * STATE.bounce;
+            } else if (this.x + this.radius >= width) {
+              this.x = width - this.radius;
+              this.vx = -this.vx * STATE.bounce;
+            }
+          } else {
+            if (this.x < -20) this.x = width + 10;
+            else if (this.x > width + 20) this.x = -10;
+          }
+
+          // Platform Obstacles Collision
+          for (let i = 0; i < obstacles.length; i++) {
+            const obs = obstacles[i];
+            this.collideWithSegment(obs.x1, obs.y1, obs.x2, obs.y2, obs.thickness, world);
+          }
+
+          return true;
+        }
+
+        collideWithSegment(x1, y1, x2, y2, thickness, world) {
+          const dx = x2 - x1;
+          const dy = y2 - y1;
+          const lenSq = dx * dx + dy * dy;
+          if (lenSq === 0) return;
+
+          let t = ((this.x - x1) * dx + (this.y - y1) * dy) / lenSq;
+          t = Math.max(0, Math.min(1, t));
+
+          const projX = x1 + t * dx;
+          const projY = y1 + t * dy;
+
+          const distX = this.x - projX;
+          const distY = this.y - projY;
+          const dist = Math.hypot(distX, distY);
+          const minDistance = this.radius + thickness / 2;
+
+          if (dist < minDistance && dist > 0) {
+            const nx = distX / dist;
+            const ny = distY / dist;
+
+            this.x = projX + nx * minDistance;
+            this.y = projY + ny * minDistance;
+
+            const dot = this.vx * nx + this.vy * ny;
+            if (dot < 0) {
+              this.vx = (this.vx - 2 * dot * nx) * STATE.bounce;
+              this.vy = (this.vy - 2 * dot * ny) * STATE.bounce;
+              const speed = Math.hypot(this.vx, this.vy);
+              if (speed > 30) {
+                audio.playBounce(speed / 250);
+                if (!this.isSpark && speed > 100 && world.particles.length < CONFIG.maxParticles) {
+                  world.spawnSparks(this.x, this.y, 2, this.color);
+                }
+              }
+            }
+          }
+        }
+
+        draw(ctx) {
+          const alpha = Math.min(1, (this.life / this.maxLife) * 1.5);
+          if (alpha <= 0.01) return;
+
+          if (this.isCharged) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.radius * 1.6, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(255, 230, 0, ${0.4 + 0.3 * Math.sin(Date.now() * 0.02)})`;
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+            ctx.fillStyle = '#ffffff';
+            ctx.fill();
+            ctx.restore();
+            return;
+          }
+
+          if (this.brushType === 'ice' && this.isFrozen) {
+            ctx.save();
+            ctx.translate(this.x, this.y);
+            const r = this.radius * 1.35;
+            
+            ctx.beginPath();
+            ctx.moveTo(0, -r);
+            ctx.lineTo(r * 0.35, -r * 0.35);
+            ctx.lineTo(r, 0);
+            ctx.lineTo(r * 0.35, r * 0.35);
+            ctx.lineTo(0, r);
+            ctx.lineTo(-r * 0.35, r * 0.35);
+            ctx.lineTo(-r, 0);
+            ctx.lineTo(-r * 0.35, -r * 0.35);
+            ctx.closePath();
+            ctx.fillStyle = hexToRgba(this.color, alpha * 0.85);
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.arc(0, 0, Math.max(1.5, r * 0.45), 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.95})`;
+            ctx.fill();
+            ctx.restore();
+            return;
+          }
+
+          if (this.trail.length > 1) {
+            ctx.beginPath();
+            ctx.moveTo(this.trail[0].x, this.trail[0].y);
+            for (let i = 1; i < this.trail.length; i++) {
+              ctx.lineTo(this.trail[i].x, this.trail[i].y);
+            }
+            ctx.strokeStyle = hexToRgba(this.color, alpha * (this.isSpark ? 0.6 : (this.brushType === 'fire' ? 0.5 : 0.35)));
+            ctx.lineWidth = this.radius * (this.isSpark ? 0.9 : 0.8);
+            ctx.lineCap = 'round';
+            ctx.stroke();
+          }
+
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+          ctx.fillStyle = hexToRgba(this.color, alpha);
+          ctx.fill();
+
+          if (this.radius > 2.5) {
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.radius * 0.45, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.85})`;
+            ctx.fill();
+          }
+        }
+      }
+
+      /* ==========================================================================
+         Physics Entity: Continuous Elastic Rope (Verlet Integration)
+         ========================================================================== */
+      class ElasticRope {
+        constructor(nodes, color, strokeId) {
+          this.nodes = nodes;
+          this.color = color;
+          this.strokeId = strokeId;
+          this.targetDist = CONFIG.ropeNodeSpacing;
+          this.life = STATE.lifeTime * 1.5;
+          this.maxLife = this.life;
+        }
+
+        addNode(x, y, radius) {
+          this.nodes.push({
+            x: x,
+            y: y,
+            oldX: x,
+            oldY: y,
+            radius: radius
+          });
+        }
+
+        update(dt, width, height, obstacles, world) {
+          this.life -= dt;
+          if (this.life <= 0) return false;
+
+          if (world && world.isShaking) {
+            for (let i = 0; i < this.nodes.length; i++) {
+              this.nodes[i].x += (Math.random() - 0.5) * 16;
+              this.nodes[i].y += (Math.random() - 0.5) * 16;
+            }
+          }
+
+          const gy = STATE.gravity * 70;
+          const gx = STATE.wind * 40;
+          const drag = Math.pow(1 - STATE.friction, dt * 60);
+
+          for (let i = 0; i < this.nodes.length; i++) {
+            const p = this.nodes[i];
+            const vx = (p.x - p.oldX) * drag;
+            const vy = (p.y - p.oldY) * drag;
+
+            p.oldX = p.x;
+            p.oldY = p.y;
+
+            p.x += vx + gx * dt * dt;
+            p.y += vy + gy * dt * dt;
+
+            if (p.y >= height - p.radius) {
+              p.y = height - p.radius;
+              p.oldY = p.y + vy * STATE.bounce;
+              p.oldX = p.x - (p.x - p.oldX) * 0.8;
+            }
+            if (p.y <= p.radius) {
+              p.y = p.radius;
+              p.oldY = p.y + vy * STATE.bounce;
+            }
+            if (STATE.bounceWalls) {
+              if (p.x <= p.radius) {
+                p.x = p.radius;
+                p.oldX = p.x + vx * STATE.bounce;
+              } else if (p.x >= width - p.radius) {
+                p.x = width - p.radius;
+                p.oldX = p.x + vx * STATE.bounce;
+              }
+            }
+
+            for (let j = 0; j < obstacles.length; j++) {
+              const obs = obstacles[j];
+              const dx = obs.x2 - obs.x1;
+              const dy = obs.y2 - obs.y1;
+              const lenSq = dx * dx + dy * dy;
+              if (lenSq === 0) continue;
+              let t = Math.max(0, Math.min(1, ((p.x - obs.x1) * dx + (p.y - obs.y1) * dy) / lenSq));
+              const projX = obs.x1 + t * dx;
+              const projY = obs.y1 + t * dy;
+              const dist = Math.hypot(p.x - projX, p.y - projY);
+              const minDist = p.radius + obs.thickness / 2;
+              if (dist < minDist && dist > 0) {
+                const nx = (p.x - projX) / dist;
+                const ny = (p.y - projY) / dist;
+                p.x = projX + nx * minDist;
+                p.y = projY + ny * minDist;
+              }
+            }
+          }
+
+          for (let iter = 0; iter < CONFIG.ropeStiffness; iter++) {
+            for (let i = 0; i < this.nodes.length - 1; i++) {
+              const n1 = this.nodes[i];
+              const n2 = this.nodes[i + 1];
+
+              const dx = n2.x - n1.x;
+              const dy = n2.y - n1.y;
+              const dist = Math.hypot(dx, dy) || 0.001;
+              const diff = (dist - this.targetDist) / dist;
+
+              n1.x += dx * 0.5 * diff;
+              n1.y += dy * 0.5 * diff;
+              n2.x -= dx * 0.5 * diff;
+              n2.y -= dy * 0.5 * diff;
+            }
+          }
+
+          return true;
+        }
+
+        draw(ctx) {
+          if (this.nodes.length < 2) return;
+          const alpha = Math.min(1, (this.life / this.maxLife) * 1.5);
+          if (alpha <= 0.01) return;
+
+          ctx.beginPath();
+          ctx.moveTo(this.nodes[0].x, this.nodes[0].y);
+          for (let i = 1; i < this.nodes.length - 1; i++) {
+            const xc = (this.nodes[i].x + this.nodes[i + 1].x) / 2;
+            const yc = (this.nodes[i].y + this.nodes[i + 1].y) / 2;
+            ctx.quadraticCurveTo(this.nodes[i].x, this.nodes[i].y, xc, yc);
+          }
+          ctx.lineTo(this.nodes[this.nodes.length - 1].x, this.nodes[this.nodes.length - 1].y);
+
+          ctx.strokeStyle = hexToRgba(this.color, alpha * 0.85);
+          ctx.lineWidth = this.nodes[0].radius * 2;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          ctx.stroke();
+
+          ctx.strokeStyle = `rgba(255, 255, 255, ${alpha * 0.9})`;
+          ctx.lineWidth = Math.max(2, this.nodes[0].radius * 0.8);
+          ctx.stroke();
+
+          for (let i = 0; i < this.nodes.length; i++) {
+            const n = this.nodes[i];
+            ctx.beginPath();
+            ctx.arc(n.x, n.y, n.radius * 0.7, 0, Math.PI * 2);
+            ctx.fillStyle = hexToRgba(this.color, alpha);
+            ctx.fill();
+          }
+        }
+      }
+
+      /* ==========================================================================
+         Static Obstacle / Platform Model
+         ========================================================================== */
+      class Obstacle {
+        constructor(x1, y1, x2, y2, thickness = 8, color = '#00f0ff') {
+          this.x1 = x1;
+          this.y1 = y1;
+          this.x2 = x2;
+          this.y2 = y2;
+          this.thickness = thickness;
+          this.color = color;
+        }
+
+        draw(ctx) {
+          ctx.beginPath();
+          ctx.moveTo(this.x1, this.y1);
+          ctx.lineTo(this.x2, this.y2);
+          ctx.strokeStyle = hexToRgba(this.color, 0.4);
+          ctx.lineWidth = this.thickness + 8;
+          ctx.lineCap = 'round';
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.moveTo(this.x1, this.y1);
+          ctx.lineTo(this.x2, this.y2);
+          ctx.strokeStyle = this.color;
+          ctx.lineWidth = this.thickness;
+          ctx.lineCap = 'round';
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.moveTo(this.x1, this.y1);
+          ctx.lineTo(this.x2, this.y2);
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = Math.max(2, this.thickness * 0.35);
+          ctx.lineCap = 'round';
+          ctx.stroke();
+        }
+      }
+
+      /* ==========================================================================
+         Background Ambient Starfield
+         ========================================================================== */
+      class Starfield {
+        constructor(canvas) {
+          this.canvas = canvas;
+          this.ctx = canvas.getContext('2d');
+          this.stars = [];
+          this.resize();
+        }
+
+        resize() {
+          this.width = window.innerWidth;
+          this.height = window.innerHeight;
+          this.canvas.width = this.width;
+          this.canvas.height = this.height;
+
+          const numStars = Math.max(40, Math.min(100, Math.floor((this.width * this.height) / 12000)));
+          this.stars = [];
+          for (let i = 0; i < numStars; i++) {
+            this.stars.push({
+              x: Math.random() * this.width,
+              y: Math.random() * this.height,
+              size: Math.random() * 1.8 + 0.5,
+              alpha: Math.random() * 0.6 + 0.15,
+              speed: Math.random() * 0.2 + 0.05,
+              hue: Math.random() > 0.5 ? 185 : 320
+            });
+          }
+        }
+
+        render() {
+          const ctx = this.ctx;
+          ctx.clearRect(0, 0, this.width, this.height);
+
+          const grad = ctx.createRadialGradient(
+            this.width / 2, this.height / 2, this.width * 0.1,
+            this.width / 2, this.height / 2, this.width * 0.75
+          );
+          grad.addColorStop(0, '#0a0d16');
+          grad.addColorStop(1, '#050609');
+          ctx.fillStyle = grad;
+          ctx.fillRect(0, 0, this.width, this.height);
+
+          for (let i = 0; i < this.stars.length; i++) {
+            const s = this.stars[i];
+            s.y += s.speed;
+            if (s.y > this.height) s.y = 0;
+
+            ctx.beginPath();
+            ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
+            ctx.fillStyle = `hsla(${s.hue}, 90%, 75%, ${s.alpha})`;
+            ctx.fill();
+          }
+        }
+      }
+
+      /* ==========================================================================
+         Main Physics Canvas Engine & World Manager
+         ========================================================================== */
+      class PhysicsWorld {
+        constructor(canvas, bgCanvas) {
+          this.canvas = canvas;
+          this.ctx = canvas.getContext('2d');
+          this.starfield = new Starfield(bgCanvas);
+
+          this.particles = [];
+          this.ropes = [];
+          this.obstacles = [];
+          
+          this.strokeHistory = [];
+          this.currentStrokeId = 1;
+
+          this.lastFrameTime = performance.now();
+          this.fps = 60;
+          this.fpsFrames = 0;
+          this.fpsLastCheck = performance.now();
+
+          this.isShaking = false;
+          this.shakeTimer = 0;
+
+          this.dpr = window.devicePixelRatio || 1;
+          this.resize();
+
+          window.addEventListener('resize', () => this.resize(), { passive: true });
+          window.addEventListener('orientationchange', () => {
+            setTimeout(() => this.resize(), 100);
+          }, { passive: true });
+        }
+
+        // Responsive Dynamic Particle Scaling with Screen Size
+        calculateMaxParticles() {
+          const area = this.width * this.height;
+          // Scale: 320x568 (~181k px) -> ~1300 particles (Smooth 60fps on mobile)
+          // iPhone 14 (390x844 = ~330k px) -> ~1700 particles
+          // iPad (768x1024 = ~786k px) -> ~2800 particles
+          // Desktop (1920x1080 = ~2.07M px) -> 4500 particles
+          const scaled = Math.round(area / 460);
+          return Math.max(1200, Math.min(5000, scaled));
+        }
+
+        resize() {
+          this.width = window.innerWidth;
+          this.height = window.innerHeight;
+          // Cap DPR at 2x on high-density mobile screens to preserve battery & high FPS
+          this.dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+          CONFIG.maxParticles = this.calculateMaxParticles();
+          if (this.particles.length > CONFIG.maxParticles) {
+            this.particles.splice(0, this.particles.length - CONFIG.maxParticles);
+          }
+
+          this.canvas.width = Math.floor(this.width * this.dpr);
+          this.canvas.height = Math.floor(this.height * this.dpr);
+          this.canvas.style.width = `${this.width}px`;
+          this.canvas.style.height = `${this.height}px`;
+
+          // Use setTransform to avoid cumulative scale drift
+          this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+
+          this.starfield.resize();
+        }
+
+        clear() {
+          this.particles = [];
+          this.ropes = [];
+          this.obstacles = [];
+          this.strokeHistory = [];
+          this.currentStrokeId = 1;
+          STATE.currentChargedStroke = [];
+          this.ctx.clearRect(0, 0, this.width, this.height);
+          showToast('Canvas Cleared');
+        }
+
+        // Feature 8: Shake to Clear (particles vibrate then disappear)
+        shakeToClear() {
+          if (this.isShaking) return;
+          this.isShaking = true;
+          this.shakeTimer = 0.65;
+          audio.playShakeRumble();
+
+          this.canvas.classList.add('screen-shaking');
+          showToast('Vibrating particles to dust...');
+        }
+
+        undo() {
+          if (this.strokeHistory.length === 0) {
+            showToast('Nothing to undo');
+            return;
+          }
+          const lastStrokeId = this.strokeHistory.pop();
+          this.particles = this.particles.filter(p => p.strokeId !== lastStrokeId);
+          this.ropes = this.ropes.filter(r => r.strokeId !== lastStrokeId);
+          this.obstacles = this.obstacles.filter(o => o.strokeId !== lastStrokeId);
+          showToast('Undid Last Stroke');
+        }
+
+        spawnParticlesAlongPath(x1, y1, x2, y2) {
+          const dist = Math.hypot(x2 - x1, y2 - y1);
+          const spacing = Math.max(3, STATE.brushSize * 0.4);
+          const steps = Math.max(1, Math.floor(dist / spacing));
+          const speedFactor = Math.min(2.5, dist / 8);
+
+          for (let i = 0; i <= steps; i++) {
+            if (this.particles.length >= CONFIG.maxParticles) {
+              this.particles.shift();
+            }
+
+            const t = i / steps;
+            const x = x1 + (x2 - x1) * t + (Math.random() - 0.5) * (STATE.brushSize * 0.3);
+            const y = y1 + (y2 - y1) * t + (Math.random() - 0.5) * (STATE.brushSize * 0.3);
+
+            const angle = Math.random() * Math.PI * 2;
+            const spread = Math.random() * 20;
+            const vx = (x2 - x1) * 0.2 + Math.cos(angle) * spread;
+            const vy = (y2 - y1) * 0.2 + Math.sin(angle) * spread;
+
+            const radius = Math.max(1.5, (STATE.brushSize / 2.5) * (0.6 + Math.random() * 0.8));
+            const color = getNextColor();
+            rainbowHue += 1.8;
+
+            const isExplodeBrush = (STATE.brushType === 'explode');
+            const p = new Particle(x, y, vx, vy, radius, color, STATE.lifeTime, this.currentStrokeId, {
+              brushType: STATE.brushType,
+              isCharged: isExplodeBrush,
+              hue: rainbowHue % 360
+            });
+
+            this.particles.push(p);
+
+            if (isExplodeBrush) {
+              STATE.currentChargedStroke.push(p);
+            }
+          }
+
+          audio.playBrushTone(y2 / this.height, speedFactor, STATE.brushType);
+        }
+
+        spawnSparksAlongPath(x1, y1, x2, y2) {
+          const dist = Math.hypot(x2 - x1, y2 - y1);
+          const count = Math.max(2, Math.floor(dist / 4));
+
+          for (let i = 0; i < count; i++) {
+            if (this.particles.length >= CONFIG.maxParticles) {
+              this.particles.shift();
+            }
+
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 60 + Math.random() * 240;
+            const color = getNextColor();
+            rainbowHue += 3.5;
+
+            const p = new Particle(
+              x2 + (Math.random() - 0.5) * STATE.brushSize,
+              y2 + (Math.random() - 0.5) * STATE.brushSize,
+              Math.cos(angle) * speed,
+              Math.sin(angle) * speed,
+              Math.max(1.5, STATE.brushSize / 4),
+              color,
+              Math.min(STATE.lifeTime, 3 + Math.random() * 4),
+              this.currentStrokeId,
+              { isSpark: true, brushType: STATE.brushType }
+            );
+            this.particles.push(p);
+          }
+
+          audio.playBrushTone(y2 / this.height, 1.8, STATE.brushType);
+        }
+
+        spawnSparks(x, y, count = 2, color = '#00f0ff') {
+          for (let i = 0; i < count; i++) {
+            if (this.particles.length >= CONFIG.maxParticles) break;
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 40 + Math.random() * 120;
+            const p = new Particle(
+              x, y,
+              Math.cos(angle) * speed,
+              Math.sin(angle) * speed,
+              1.8,
+              color,
+              1.2 + Math.random() * 0.8,
+              this.currentStrokeId,
+              { isSpark: true }
+            );
+            this.particles.push(p);
+          }
+        }
+
+        detonateExplodeBrush(releaseX, releaseY) {
+          if (!STATE.currentChargedStroke || STATE.currentChargedStroke.length === 0) return;
+
+          let cx = 0, cy = 0;
+          for (const p of STATE.currentChargedStroke) {
+            cx += p.x;
+            cy += p.y;
+          }
+          cx = (cx / STATE.currentChargedStroke.length + releaseX) / 2;
+          cy = (cy / STATE.currentChargedStroke.length + releaseY) / 2;
+
+          for (const p of STATE.currentChargedStroke) {
+            p.isCharged = false;
+            const angle = Math.atan2(p.y - cy, p.x - cx) + (Math.random() - 0.5) * 0.6;
+            const speed = 180 + Math.random() * 480;
+            p.vx = Math.cos(angle) * speed;
+            p.vy = Math.sin(angle) * speed;
+            p.life = Math.min(p.life, 6);
+          }
+
+          audio.playExplosion();
+          STATE.currentChargedStroke = [];
+          showToast('💥 Exploded Outward!');
+        }
+
+        applyForceFields(x, y, forceType, dt) {
+          const radius = Math.min(220, Math.max(120, this.width * 0.28));
+          const radiusSq = radius * radius;
+          audio.playBrushTone(y / this.height, 0.4, 'normal');
+
+          for (let i = 0; i < this.particles.length; i++) {
+            const p = this.particles[i];
+            if (p.isFrozen) continue;
+
+            const dx = x - p.x;
+            const dy = y - p.y;
+            const distSq = dx * dx + dy * dy;
+
+            if (distSq < radiusSq && distSq > 4) {
+              const dist = Math.sqrt(distSq);
+              const normX = dx / dist;
+              const normY = dy / dist;
+              const strength = (1 - dist / radius) * 620;
+
+              if (forceType === 'attractor') {
+                p.vx += normX * strength * dt;
+                p.vy += normY * strength * dt;
+                p.vx += -normY * strength * 0.45 * dt;
+                p.vy += normX * strength * 0.45 * dt;
+              } else if (forceType === 'repulsor') {
+                p.vx -= normX * strength * 2.3 * dt;
+                p.vy -= normY * strength * 2.3 * dt;
+              }
+            }
+          }
+
+          for (let r = 0; r < this.ropes.length; r++) {
+            for (let n = 0; n < this.ropes[r].nodes.length; n++) {
+              const node = this.ropes[r].nodes[n];
+              const dx = x - node.x;
+              const dy = y - node.y;
+              const distSq = dx * dx + dy * dy;
+              if (distSq < radiusSq) {
+                const dist = Math.sqrt(distSq) || 1;
+                const factor = (1 - dist / radius) * (forceType === 'attractor' ? 6 : -14);
+                node.x += (dx / dist) * factor;
+                node.y += (dy / dist) * factor;
+              }
+            }
+          }
+        }
+
+        applyEraser(x, y) {
+          const eraseRadius = Math.max(22, STATE.brushSize * 2.6);
+          const rSq = eraseRadius * eraseRadius;
+
+          this.particles = this.particles.filter(p => {
+            const dSq = (p.x - x) * (p.x - x) + (p.y - y) * (p.y - y);
+            return dSq > rSq;
+          });
+
+          this.obstacles = this.obstacles.filter(obs => {
+            const dx = obs.x2 - obs.x1;
+            const dy = obs.y2 - obs.y1;
+            const lenSq = dx * dx + dy * dy;
+            let t = Math.max(0, Math.min(1, ((x - obs.x1) * dx + (y - obs.y1) * dy) / lenSq));
+            const projX = obs.x1 + t * dx;
+            const projY = obs.y1 + t * dy;
+            const dist = Math.hypot(x - projX, y - projY);
+            return dist > eraseRadius;
+          });
+        }
+
+        updatePhysics(dt) {
+          if (STATE.isPaused) return;
+
+          const scaledDt = dt * STATE.timeScale;
+
+          if (this.isShaking) {
+            this.shakeTimer -= scaledDt;
+            if (this.shakeTimer <= 0) {
+              this.isShaking = false;
+              this.canvas.classList.remove('screen-shaking');
+              this.clear();
+              audio.playBounce(2);
+              showToast('✨ All Particles Vaporized!');
+              return;
+            }
+          }
+
+          const subDt = scaledDt / CONFIG.subSteps;
+
+          for (let step = 0; step < CONFIG.subSteps; step++) {
+            for (let i = this.particles.length - 1; i >= 0; i--) {
+              const alive = this.particles[i].update(subDt, this.width, this.height, this.obstacles, this);
+              if (!alive) {
+                this.particles[i] = this.particles[this.particles.length - 1];
+                this.particles.pop();
+              }
+            }
+
+            for (let i = this.ropes.length - 1; i >= 0; i--) {
+              const alive = this.ropes[i].update(subDt, this.width, this.height, this.obstacles, this);
+              if (!alive) {
+                this.ropes.splice(i, 1);
+              }
+            }
+          }
+        }
+
+        render() {
+          const ctx = this.ctx;
+
+          if (STATE.ghostTrails) {
+            ctx.fillStyle = 'rgba(7, 8, 14, 0.20)';
+            ctx.fillRect(0, 0, this.width, this.height);
+          } else {
+            ctx.clearRect(0, 0, this.width, this.height);
+          }
+
+          for (let i = 0; i < this.obstacles.length; i++) {
+            this.obstacles[i].draw(ctx);
+          }
+
+          ctx.save();
+          ctx.globalCompositeOperation = 'screen';
+
+          for (let i = 0; i < this.particles.length; i++) {
+            this.particles[i].draw(ctx);
+          }
+
+          for (let i = 0; i < this.ropes.length; i++) {
+            this.ropes[i].draw(ctx);
+          }
+
+          ctx.restore();
+
+          if (STATE.tool === 'platform' && STATE.pointer.down && STATE.platformStart) {
+            ctx.beginPath();
+            ctx.moveTo(STATE.platformStart.x, STATE.platformStart.y);
+            ctx.lineTo(STATE.pointer.x, STATE.pointer.y);
+            ctx.strokeStyle = '#00f0ff';
+            ctx.lineWidth = Math.max(4, STATE.brushSize * 0.8);
+            ctx.lineCap = 'round';
+            ctx.setLineDash([8, 6]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+          }
+
+          this.renderCursorPreview(ctx);
+        }
+
+        renderCursorPreview(ctx) {
+          if (!STATE.pointer.active) return;
+          const px = STATE.pointer.x;
+          const py = STATE.pointer.y;
+
+          ctx.save();
+          if (STATE.tool === 'attractor') {
+            ctx.beginPath();
+            ctx.arc(px, py, 40, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(0, 240, 255, 0.45)';
+            ctx.setLineDash([4, 4]);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(px, py, 6, 0, Math.PI * 2);
+            ctx.fillStyle = '#00f0ff';
+            ctx.fill();
+          } else if (STATE.tool === 'repulsor') {
+            ctx.beginPath();
+            ctx.arc(px, py, 40, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(255, 0, 127, 0.45)';
+            ctx.setLineDash([4, 4]);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(px, py, 6, 0, Math.PI * 2);
+            ctx.fillStyle = '#ff007f';
+            ctx.fill();
+          } else if (STATE.tool === 'eraser') {
+            const r = Math.max(18, STATE.brushSize * 2.4);
+            ctx.beginPath();
+            ctx.arc(px, py, r, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(255, 80, 80, 0.65)';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+          } else {
+            const r = STATE.brushSize / 2;
+            ctx.beginPath();
+            ctx.arc(px, py, Math.max(3, r), 0, Math.PI * 2);
+            
+            if (STATE.brushType === 'fire') {
+              ctx.strokeStyle = 'rgba(255, 90, 0, 0.85)';
+            } else if (STATE.brushType === 'ice') {
+              ctx.strokeStyle = 'rgba(56, 189, 248, 0.85)';
+            } else if (STATE.brushType === 'rainbow') {
+              ctx.strokeStyle = `hsl(${rainbowHue % 360}, 100%, 75%)`;
+            } else if (STATE.brushType === 'explode') {
+              ctx.strokeStyle = 'rgba(255, 230, 0, 0.85)';
+            } else {
+              ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+            }
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+          }
+          ctx.restore();
+        }
+
+        loop(currentTime) {
+          const dt = Math.min(0.04, (currentTime - this.lastFrameTime) / 1000);
+          this.lastFrameTime = currentTime;
+
+          this.fpsFrames++;
+          if (currentTime - this.fpsLastCheck >= 400) {
+            this.fps = Math.round((this.fpsFrames * 1000) / (currentTime - this.fpsLastCheck));
+            this.fpsFrames = 0;
+            this.fpsLastCheck = currentTime;
+            const totalParticles = this.particles.length + this.ropes.reduce((acc, r) => acc + r.nodes.length, 0);
+            updateStatsHUD(this.fps, totalParticles);
+          }
+
+          if (STATE.pointer.down) {
+            if (STATE.tool === 'attractor') {
+              this.applyForceFields(STATE.pointer.x, STATE.pointer.y, 'attractor', dt);
+            } else if (STATE.tool === 'repulsor') {
+              this.applyForceFields(STATE.pointer.x, STATE.pointer.y, 'repulsor', dt);
+            } else if (STATE.tool === 'eraser') {
+              this.applyEraser(STATE.pointer.x, STATE.pointer.y);
+            }
+          }
+
+          this.starfield.render();
+          this.updatePhysics(dt);
+          this.render();
+
+          requestAnimationFrame((t) => this.loop(t));
+        }
+
+        start() {
+          requestAnimationFrame((t) => {
+            this.lastFrameTime = t;
+            this.loop(t);
+          });
+        }
+      }
+
+      /* ==========================================================================
+         Playground Preset Scenes
+         ========================================================================== */
+      function loadPreset(name, world) {
+        world.clear();
+        const w = world.width;
+        const h = world.height;
+
+        if (name === 'pachinko') {
+          STATE.gravity = 12;
+          STATE.bounce = 0.85;
+          document.getElementById('slider-gravity').value = 12;
+          document.getElementById('slider-bounce').value = 0.85;
+          updateTuningValues();
+
+          world.obstacles.push(new Obstacle(w * 0.1, h * 0.25, w * 0.55, h * 0.35, 10, '#00f0ff'));
+          world.obstacles.push(new Obstacle(w * 0.9, h * 0.45, w * 0.45, h * 0.55, 10, '#ff007f'));
+          world.obstacles.push(new Obstacle(w * 0.15, h * 0.65, w * 0.6, h * 0.75, 10, '#ffe600'));
+          world.obstacles.push(new Obstacle(w * 0.4, h * 0.85, w * 0.75, h * 0.9, 10, '#00ff88'));
+
+          world.currentStrokeId++;
+          world.strokeHistory.push(world.currentStrokeId);
+          const dropCount = Math.min(90, Math.floor(w / 10));
+          for (let i = 0; i < dropCount; i++) {
+            const p = new Particle(
+              w * 0.3 + (Math.random() - 0.5) * 80,
+              h * 0.1 + Math.random() * 40,
+              (Math.random() - 0.5) * 40,
+              Math.random() * 20,
+              4 + Math.random() * 3,
+              `hsl(${(i * 12) % 360}, 100%, 65%)`,
+              35,
+              world.currentStrokeId
+            );
+            world.particles.push(p);
+          }
+          showToast('Loaded Pachinko Cascade');
+        }
+        else if (name === 'funnels') {
+          STATE.gravity = 14;
+          STATE.bounce = 0.75;
+          world.obstacles.push(new Obstacle(w * 0.1, h * 0.2, w * 0.45, h * 0.4, 12, '#00f0ff'));
+          world.obstacles.push(new Obstacle(w * 0.9, h * 0.2, w * 0.55, h * 0.4, 12, '#00f0ff'));
+
+          world.obstacles.push(new Obstacle(w * 0.2, h * 0.55, w * 0.48, h * 0.7, 12, '#ff007f'));
+          world.obstacles.push(new Obstacle(w * 0.8, h * 0.55, w * 0.52, h * 0.7, 12, '#ff007f'));
+
+          world.obstacles.push(new Obstacle(w * 0.3, h * 0.88, w * 0.7, h * 0.88, 14, '#ffe600'));
+          showToast('Loaded Neon Funnel Run');
+        }
+        else if (name === 'nebula') {
+          STATE.gravity = 0;
+          STATE.friction = 0.005;
+          document.getElementById('slider-gravity').value = 0;
+          document.getElementById('slider-friction').value = 0.005;
+          updateTuningValues();
+
+          const cx = w / 2;
+          const cy = h / 2;
+          world.currentStrokeId++;
+          world.strokeHistory.push(world.currentStrokeId);
+
+          const particleCount = Math.min(280, Math.floor((w * h) / 3200));
+          for (let i = 0; i < particleCount; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 30 + Math.random() * Math.min(220, w * 0.35);
+            const speed = Math.sqrt(dist) * 8;
+            const p = new Particle(
+              cx + Math.cos(angle) * dist,
+              cy + Math.sin(angle) * dist,
+              -Math.sin(angle) * speed,
+              Math.cos(angle) * speed,
+              2 + Math.random() * 3,
+              `hsl(${(dist + angle * 40) % 360}, 100%, 70%)`,
+              45,
+              world.currentStrokeId
+            );
+            world.particles.push(p);
+          }
+          showToast('Loaded Zero-G Nebula');
+        }
+        else if (name === 'chains') {
+          STATE.gravity = 11;
+          const numChains = Math.min(6, Math.max(3, Math.floor(w / 120)));
+          for (let col = 0; col < numChains; col++) {
+            const startX = w * (0.18 + col * (0.64 / (numChains - 1 || 1)));
+            const nodes = [];
+            const numNodes = Math.min(18, Math.max(10, Math.floor(h / 55)));
+            for (let row = 0; row < numNodes; row++) {
+              const ny = h * 0.15 + row * 16;
+              nodes.push({ x: startX, y: ny, oldX: startX, oldY: ny, radius: 4 });
+            }
+            world.ropes.push(new ElasticRope(nodes, `hsl(${col * 55}, 100%, 65%)`, world.currentStrokeId));
+          }
+          showToast('Loaded Elastic Rope Curtain');
+        }
+        else if (name === 'fireworks') {
+          STATE.gravity = 10;
+          const cx = w / 2;
+          world.currentStrokeId++;
+          world.strokeHistory.push(world.currentStrokeId);
+
+          const sparkCount = Math.min(320, Math.floor((w * h) / 3000));
+          for (let i = 0; i < sparkCount; i++) {
+            const angle = -Math.PI / 2 + (Math.random() - 0.5) * 1.4;
+            const speed = 250 + Math.random() * 450;
+            const p = new Particle(
+              cx + (Math.random() - 0.5) * 60,
+              h - 20,
+              Math.cos(angle) * speed,
+              Math.sin(angle) * speed,
+              3 + Math.random() * 3.5,
+              `hsl(${Math.random() * 360}, 100%, 68%)`,
+              22,
+              world.currentStrokeId,
+              { isSpark: true }
+            );
+            world.particles.push(p);
+          }
+          audio.playBounce(3);
+          showToast('Fireworks Burst!');
+        }
+      }
+
+      /* ==========================================================================
+         UI Toast & Notifications
+         ========================================================================== */
+      let toastTimer = null;
+      function showToast(msg) {
+        const toast = document.getElementById('toast');
+        const text = document.getElementById('toast-text');
+        text.textContent = msg;
+        toast.classList.add('show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => {
+          toast.classList.remove('show');
+        }, 2200);
+      }
+
+      function updateStatsHUD(fps, count) {
+        document.getElementById('fps-counter').textContent = fps;
+        document.getElementById('particle-counter').textContent = count.toLocaleString();
+        document.getElementById('speed-pill').textContent = `${STATE.timeScale.toFixed(1)}x`;
+
+        const dot = document.getElementById('fps-dot');
+        if (fps >= 50) dot.style.backgroundColor = '#00ff88';
+        else if (fps >= 30) dot.style.backgroundColor = '#ffe600';
+        else dot.style.backgroundColor = '#ff007f';
+      }
+
+      /* ==========================================================================
+         Main Application Setup & Event Listeners
+         ========================================================================== */
+      window.addEventListener('DOMContentLoaded', () => {
+        const canvas = document.getElementById('canvas');
+        const bgCanvas = document.getElementById('bg-canvas');
+        const world = new PhysicsWorld(canvas, bgCanvas);
+        world.start();
+
+        // ----------------------------------------------------
+        // Pointer Input Handlers (Full Mouse & Touch Support)
+        // ----------------------------------------------------
+        function getPointerPos(e) {
+          const rect = canvas.getBoundingClientRect();
+          let clientX, clientY;
+
+          if (e.touches && e.touches.length > 0) {
+            clientX = e.touches[0].clientX;
+            clientY = e.touches[0].clientY;
+          } else if (e.changedTouches && e.changedTouches.length > 0) {
+            clientX = e.changedTouches[0].clientX;
+            clientY = e.changedTouches[0].clientY;
+          } else {
+            clientX = e.clientX !== undefined ? e.clientX : STATE.pointer.x;
+            clientY = e.clientY !== undefined ? e.clientY : STATE.pointer.y;
+          }
+
+          return {
+            x: clientX - rect.left,
+            y: clientY - rect.top
+          };
+        }
+
+        function handlePointerDown(e) {
+          audio.init();
+          const pos = getPointerPos(e);
+          STATE.pointer.x = pos.x;
+          STATE.pointer.y = pos.y;
+          STATE.pointer.prevX = pos.x;
+          STATE.pointer.prevY = pos.y;
+          STATE.pointer.down = true;
+          STATE.pointer.active = true;
+
+          world.currentStrokeId++;
+          world.strokeHistory.push(world.currentStrokeId);
+
+          if (STATE.tool === 'platform') {
+            STATE.platformStart = { x: pos.x, y: pos.y };
+          } else if (STATE.tool === 'drops') {
+            world.spawnParticlesAlongPath(pos.x, pos.y, pos.x, pos.y);
+          } else if (STATE.tool === 'sparks') {
+            world.spawnSparksAlongPath(pos.x, pos.y, pos.x, pos.y);
+          } else if (STATE.tool === 'ropes') {
+            const nodeRadius = Math.max(2, STATE.brushSize / 2.8);
+            const initialNodes = [{
+              x: pos.x,
+              y: pos.y,
+              oldX: pos.x,
+              oldY: pos.y,
+              radius: nodeRadius
+            }];
+            STATE.activeRope = new ElasticRope(initialNodes, getNextColor(), world.currentStrokeId);
+            rainbowHue += 10;
+            world.ropes.push(STATE.activeRope);
+            audio.playBrushTone(pos.y / world.height, 1.2, STATE.brushType);
+          }
+        }
+
+        function handlePointerMove(e) {
+          const pos = getPointerPos(e);
+          STATE.pointer.active = true;
+
+          if (STATE.pointer.down) {
+            const prevX = STATE.pointer.prevX;
+            const prevY = STATE.pointer.prevY;
+            const dist = Math.hypot(pos.x - prevX, pos.y - prevY);
+            STATE.pointer.speed = dist;
+
+            if (STATE.tool === 'drops') {
+              world.spawnParticlesAlongPath(prevX, prevY, pos.x, pos.y);
+            } else if (STATE.tool === 'sparks') {
+              world.spawnSparksAlongPath(prevX, prevY, pos.x, pos.y);
+            } else if (STATE.tool === 'ropes' && STATE.activeRope) {
+              const lastNode = STATE.activeRope.nodes[STATE.activeRope.nodes.length - 1];
+              if (lastNode && Math.hypot(pos.x - lastNode.x, pos.y - lastNode.y) >= CONFIG.ropeNodeSpacing) {
+                STATE.activeRope.addNode(pos.x, pos.y, Math.max(2, STATE.brushSize / 2.8));
+                audio.playBrushTone(pos.y / world.height, 0.8, STATE.brushType);
+              }
+            }
+
+            STATE.pointer.prevX = pos.x;
+            STATE.pointer.prevY = pos.y;
+          }
+
+          STATE.pointer.x = pos.x;
+          STATE.pointer.y = pos.y;
+        }
+
+        function handlePointerUp() {
+          if (STATE.pointer.down) {
+            if (STATE.brushType === 'explode') {
+              world.detonateExplodeBrush(STATE.pointer.x, STATE.pointer.y);
+            }
+
+            if (STATE.tool === 'platform' && STATE.platformStart) {
+              const p1 = STATE.platformStart;
+              const p2 = { x: STATE.pointer.x, y: STATE.pointer.y };
+              const len = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+
+              if (len > 15) {
+                const obs = new Obstacle(p1.x, p1.y, p2.x, p2.y, Math.max(6, STATE.brushSize * 0.8), getNextColor());
+                obs.strokeId = world.currentStrokeId;
+                world.obstacles.push(obs);
+                audio.playBounce(1.5);
+                showToast('Platform Created');
+              }
+              STATE.platformStart = null;
+            }
+            STATE.activeRope = null;
+          }
+          STATE.pointer.down = false;
+        }
+
+        // Mouse listeners
+        canvas.addEventListener('mousedown', handlePointerDown);
+        window.addEventListener('mousemove', handlePointerMove);
+        window.addEventListener('mouseup', handlePointerUp);
+
+        // Touch listeners (Touch Drawing & Gesture Prevention on Canvas)
+        canvas.addEventListener('touchstart', (e) => {
+          e.preventDefault();
+          handlePointerDown(e);
+        }, { passive: false });
+
+        window.addEventListener('touchmove', (e) => {
+          if (STATE.pointer.down) {
+            e.preventDefault();
+          }
+          handlePointerMove(e);
+        }, { passive: false });
+
+        window.addEventListener('touchend', (e) => {
+          handlePointerUp();
+        }, { passive: false });
+
+        window.addEventListener('touchcancel', (e) => {
+          handlePointerUp();
+        }, { passive: false });
+
+        canvas.addEventListener('mouseleave', () => {
+          STATE.pointer.active = false;
+        });
+
+        // ----------------------------------------------------
+        // Feature 1: Brush Selector Toolbar (5 types)
+        // ----------------------------------------------------
+        const brushButtons = document.querySelectorAll('.brush-btn');
+        function setBrushType(type) {
+          STATE.brushType = type;
+          brushButtons.forEach(btn => {
+            btn.classList.toggle('active', btn.getAttribute('data-brush') === type);
+          });
+          if (['platform', 'attractor', 'repulsor', 'eraser'].includes(STATE.tool)) {
+            document.querySelector('[data-tool="drops"]').click();
+          }
+          const descMap = {
+            normal: 'Normal (Standard Physics)',
+            fire: 'Fire (Flickering Embers & Heat Lift)',
+            ice: 'Ice (Freezes & Crystals in Place)',
+            rainbow: 'Rainbow (Chromatic Flow)',
+            explode: 'Explode (Burst Outward on Release)'
+          };
+          showToast(`Brush: ${descMap[type] || type.toUpperCase()}`);
+        }
+
+        brushButtons.forEach(btn => {
+          btn.addEventListener('click', () => {
+            const brush = btn.getAttribute('data-brush');
+            setBrushType(brush);
+          });
+        });
+
+        // ----------------------------------------------------
+        // Tool Selection
+        // ----------------------------------------------------
+        const toolButtons = document.querySelectorAll('.tool-btn');
+        toolButtons.forEach(btn => {
+          btn.addEventListener('click', () => {
+            toolButtons.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            STATE.tool = btn.getAttribute('data-tool');
+            showToast(`Tool: ${STATE.tool.toUpperCase()}`);
+          });
+        });
+
+        // ----------------------------------------------------
+        // Color Swatches Selection (Touch-Friendly Targets)
+        // ----------------------------------------------------
+        const swatchWrappers = document.querySelectorAll('.swatch-wrapper');
+        swatchWrappers.forEach(sw => {
+          sw.addEventListener('click', () => {
+            swatchWrappers.forEach(s => s.classList.remove('active'));
+            sw.classList.add('active');
+            STATE.palette = sw.getAttribute('data-palette');
+            showToast(`Color: ${sw.getAttribute('data-tooltip') || 'Selected'}`);
+          });
+        });
+
+        // ----------------------------------------------------
+        // Feature 2: Gravity Toggle button to flip gravity upward
+        // ----------------------------------------------------
+        const btnGravityFlip = document.getElementById('btn-gravity-flip');
+        const iconGravityArrow = document.getElementById('icon-gravity-arrow');
+        const labelGravity = document.getElementById('label-gravity');
+        const drawerBtnGravity = document.getElementById('drawer-btn-gravity');
+        const drawerLabelGravity = document.getElementById('drawer-label-gravity');
+
+        function toggleGravityFlip() {
+          STATE.gravity = -STATE.gravity;
+          sliderGravity.value = STATE.gravity;
+          updateTuningValues();
+          const isUp = STATE.gravity < 0;
+
+          if (iconGravityArrow) iconGravityArrow.style.transform = isUp ? 'rotate(180deg)' : 'rotate(0deg)';
+          if (btnGravityFlip) btnGravityFlip.classList.toggle('active', isUp);
+          if (labelGravity) labelGravity.textContent = isUp ? 'Gravity: Up' : 'Gravity: Down';
+          if (drawerLabelGravity) drawerLabelGravity.textContent = isUp ? 'Up (-9.8)' : 'Down (9.8)';
+
+          audio.playWarp(isUp);
+          showToast(isUp ? 'Gravity Flipped: Floating Upward ⬆' : 'Normal Gravity: Pulling Downward ⬇');
+        }
+
+        btnGravityFlip.addEventListener('click', toggleGravityFlip);
+        drawerBtnGravity.addEventListener('click', toggleGravityFlip);
+
+        // ----------------------------------------------------
+        // Feature 4: Background Trail Effect toggle (fading ghost trails)
+        // ----------------------------------------------------
+        const btnGhostTrails = document.getElementById('btn-ghost-trails');
+        const checkGhostTrails = document.getElementById('check-ghost-trails');
+        const drawerBtnTrails = document.getElementById('drawer-btn-trails');
+        const drawerLabelTrails = document.getElementById('drawer-label-trails');
+
+        function setGhostTrails(enabled) {
+          STATE.ghostTrails = enabled;
+          if (btnGhostTrails) btnGhostTrails.classList.toggle('active', enabled);
+          if (checkGhostTrails) checkGhostTrails.checked = enabled;
+          if (drawerLabelTrails) drawerLabelTrails.textContent = enabled ? 'Active' : 'Off';
+          if (!enabled) {
+            world.ctx.clearRect(0, 0, world.width, world.height);
+          }
+          showToast(enabled ? 'Ghost Trails: ON (Fading Trails)' : 'Ghost Trails: OFF (Sharp Clear)');
+        }
+
+        btnGhostTrails.addEventListener('click', () => setGhostTrails(!STATE.ghostTrails));
+        checkGhostTrails.addEventListener('change', (e) => setGhostTrails(e.target.checked));
+        drawerBtnTrails.addEventListener('click', () => setGhostTrails(!STATE.ghostTrails));
+
+        // ----------------------------------------------------
+        // Feature 6: Screenshot button to export canvas as PNG
+        // ----------------------------------------------------
+        function captureScreenshot() {
+          audio.playShutter();
+
+          const flash = document.getElementById('shutter-flash');
+          flash.classList.remove('flash-active');
+          void flash.offsetWidth;
+          flash.classList.add('flash-active');
+
+          const tempCanvas = document.createElement('canvas');
+          tempCanvas.width = canvas.width;
+          tempCanvas.height = canvas.height;
+          const tCtx = tempCanvas.getContext('2d');
+
+          tCtx.drawImage(bgCanvas, 0, 0, tempCanvas.width, tempCanvas.height);
+          tCtx.drawImage(canvas, 0, 0);
+
+          const link = document.createElement('a');
+          link.download = `gravity-sketch-${Date.now()}.png`;
+          link.href = tempCanvas.toDataURL('image/png');
+          link.click();
+          showToast('📸 Screenshot Saved as PNG!');
+        }
+
+        document.getElementById('btn-save').addEventListener('click', captureScreenshot);
+        document.getElementById('drawer-btn-screenshot').addEventListener('click', () => {
+          captureScreenshot();
+          closeMobileMenu();
+        });
+
+        // ----------------------------------------------------
+        // Feature 8: Shake to Clear button & Motion Sensor
+        // ----------------------------------------------------
+        document.getElementById('btn-shake-clear').addEventListener('click', () => world.shakeToClear());
+        document.getElementById('drawer-btn-shake').addEventListener('click', () => {
+          world.shakeToClear();
+          closeMobileMenu();
+        });
+
+        // Physical Accelerometer Shake Detection for Mobile Devices
+        if (window.DeviceMotionEvent) {
+          let lastX = 0, lastY = 0, lastZ = 0, lastShakeTime = 0;
+          window.addEventListener('devicemotion', (e) => {
+            const acc = e.accelerationIncludingGravity;
+            if (!acc) return;
+            const now = Date.now();
+            if (now - lastShakeTime < 1600) return;
+            const dx = acc.x - lastX;
+            const dy = acc.y - lastY;
+            const dz = acc.z - lastZ;
+            const speed = Math.abs(dx + dy + dz);
+            if (speed > 28) {
+              lastShakeTime = now;
+              world.shakeToClear();
+            }
+            lastX = acc.x;
+            lastY = acc.y;
+            lastZ = acc.z;
+          }, { passive: true });
+        }
+
+        // ----------------------------------------------------
+        // Play / Pause Simulation
+        // ----------------------------------------------------
+        const btnPause = document.getElementById('btn-pause');
+        const iconPause = document.getElementById('icon-pause');
+        const iconPlay = document.getElementById('icon-play');
+        const btnMobilePause = document.getElementById('btn-mobile-pause');
+        const iconMobilePause = document.getElementById('icon-mobile-pause');
+        const iconMobilePlay = document.getElementById('icon-mobile-play');
+
+        function togglePause() {
+          STATE.isPaused = !STATE.isPaused;
+          iconPause.style.display = STATE.isPaused ? 'none' : 'block';
+          iconPlay.style.display = STATE.isPaused ? 'block' : 'none';
+          iconMobilePause.style.display = STATE.isPaused ? 'none' : 'block';
+          iconMobilePlay.style.display = STATE.isPaused ? 'block' : 'none';
+          btnPause.classList.toggle('active', STATE.isPaused);
+          btnMobilePause.classList.toggle('active', STATE.isPaused);
+          showToast(STATE.isPaused ? 'Physics Paused' : 'Physics Resumed');
+        }
+
+        btnPause.addEventListener('click', togglePause);
+        btnMobilePause.addEventListener('click', togglePause);
+
+        // ----------------------------------------------------
+        // Sound Mute Toggle
+        // ----------------------------------------------------
+        const btnSound = document.getElementById('btn-sound');
+        const iconSoundOn = document.getElementById('icon-sound-on');
+        const iconSoundOff = document.getElementById('icon-sound-off');
+        const drawerBtnSound = document.getElementById('drawer-btn-sound');
+        const drawerLabelSound = document.getElementById('drawer-label-sound');
+
+        function toggleSound() {
+          STATE.soundMuted = !STATE.soundMuted;
+          iconSoundOn.style.display = STATE.soundMuted ? 'none' : 'block';
+          iconSoundOff.style.display = STATE.soundMuted ? 'block' : 'none';
+          if (drawerLabelSound) drawerLabelSound.textContent = STATE.soundMuted ? 'Muted' : 'Active';
+          showToast(STATE.soundMuted ? 'Audio Muted' : 'Audio Enabled');
+        }
+
+        btnSound.addEventListener('click', toggleSound);
+        drawerBtnSound.addEventListener('click', toggleSound);
+
+        // ----------------------------------------------------
+        // Undo & Clear
+        // ----------------------------------------------------
+        document.getElementById('btn-undo').addEventListener('click', () => world.undo());
+        document.getElementById('btn-mobile-undo').addEventListener('click', () => world.undo());
+        document.getElementById('btn-clear').addEventListener('click', () => world.clear());
+        document.getElementById('btn-mobile-clear').addEventListener('click', () => world.clear());
+
+        // ----------------------------------------------------
+        // Flyout Panels (Tuning & Presets)
+        // ----------------------------------------------------
+        const btnTuning = document.getElementById('btn-toggle-tuning');
+        const controlsPanel = document.getElementById('controls-panel');
+        const btnCloseTuning = document.getElementById('btn-close-tuning');
+
+        btnTuning.addEventListener('click', (e) => {
+          e.stopPropagation();
+          controlsPanel.classList.toggle('open');
+          presetsDrawer.classList.remove('open');
+        });
+
+        btnCloseTuning.addEventListener('click', () => controlsPanel.classList.remove('open'));
+
+        const btnPresets = document.getElementById('btn-presets');
+        const presetsDrawer = document.getElementById('presets-drawer');
+        const btnClosePresets = document.getElementById('btn-close-presets');
+
+        btnPresets.addEventListener('click', (e) => {
+          e.stopPropagation();
+          presetsDrawer.classList.toggle('open');
+          controlsPanel.classList.remove('open');
+        });
+
+        btnClosePresets.addEventListener('click', () => presetsDrawer.classList.remove('open'));
+
+        window.addEventListener('click', (e) => {
+          if (!controlsPanel.contains(e.target) && e.target !== btnTuning && e.target !== document.getElementById('drawer-btn-tuning')) {
+            controlsPanel.classList.remove('open');
+          }
+          if (!presetsDrawer.contains(e.target) && e.target !== btnPresets) {
+            presetsDrawer.classList.remove('open');
+          }
+        });
+
+        document.querySelectorAll('.preset-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const presetName = btn.getAttribute('data-preset');
+            loadPreset(presetName, world);
+            presetsDrawer.classList.remove('open');
+          });
+        });
+
+        // ----------------------------------------------------
+        // Mobile Drawer Management
+        // ----------------------------------------------------
+        const mobileMenuBackdrop = document.getElementById('mobile-menu-backdrop');
+        const btnMobileMenu = document.getElementById('btn-mobile-menu');
+        const btnCloseMobileMenu = document.getElementById('btn-close-mobile-menu');
+
+        function openMobileMenu() {
+          mobileMenuBackdrop.classList.add('open');
+          controlsPanel.classList.remove('open');
+          presetsDrawer.classList.remove('open');
+        }
+
+        function closeMobileMenu() {
+          mobileMenuBackdrop.classList.remove('open');
+        }
+
+        btnMobileMenu.addEventListener('click', openMobileMenu);
+        btnCloseMobileMenu.addEventListener('click', closeMobileMenu);
+        mobileMenuBackdrop.addEventListener('click', (e) => {
+          if (e.target === mobileMenuBackdrop) closeMobileMenu();
+        });
+
+        document.querySelectorAll('.drawer-preset-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const presetName = btn.getAttribute('data-preset');
+            loadPreset(presetName, world);
+            closeMobileMenu();
+          });
+        });
+
+        document.getElementById('drawer-btn-tuning').addEventListener('click', () => {
+          closeMobileMenu();
+          controlsPanel.classList.add('open');
+        });
+
+        document.getElementById('drawer-btn-help').addEventListener('click', () => {
+          closeMobileMenu();
+          document.getElementById('help-modal').classList.add('open');
+        });
+
+        // ----------------------------------------------------
+        // Feature 3: Time Slow-Mo slider (0.1x to 3x speed)
+        // ----------------------------------------------------
+        const sliderTimeScale = document.getElementById('slider-timescale');
+        const panelSliderTimeScale = document.getElementById('panel-slider-timescale');
+        const dockValTime = document.getElementById('dock-val-time');
+        const valTimeScale = document.getElementById('val-timescale');
+        const speedPill = document.getElementById('speed-pill');
+        const speedChips = document.querySelectorAll('.chip-btn');
+
+        function setTimeScale(val) {
+          const clamped = Math.max(0.1, Math.min(3.0, parseFloat(val)));
+          STATE.timeScale = clamped;
+          if (sliderTimeScale) sliderTimeScale.value = clamped;
+          if (panelSliderTimeScale) panelSliderTimeScale.value = clamped;
+          if (dockValTime) dockValTime.textContent = `${clamped.toFixed(1)}x`;
+          if (valTimeScale) valTimeScale.textContent = `${clamped.toFixed(1)}x`;
+          if (speedPill) speedPill.textContent = `${clamped.toFixed(1)}x`;
+
+          speedChips.forEach(chip => {
+            chip.classList.toggle('active', Math.abs(parseFloat(chip.getAttribute('data-speed')) - clamped) < 0.05);
+          });
+        }
+
+        sliderTimeScale.addEventListener('input', (e) => setTimeScale(e.target.value));
+        panelSliderTimeScale.addEventListener('input', (e) => setTimeScale(e.target.value));
+
+        speedChips.forEach(chip => {
+          chip.addEventListener('click', () => {
+            setTimeScale(chip.getAttribute('data-speed'));
+            showToast(`Time Speed: ${chip.getAttribute('data-speed')}x`);
+          });
+        });
+
+        // ----------------------------------------------------
+        // Sliders & Tuning Inputs
+        // ----------------------------------------------------
+        const sliderGravity = document.getElementById('slider-gravity');
+        const sliderBounce = document.getElementById('slider-bounce');
+        const sliderFriction = document.getElementById('slider-friction');
+        const sliderLife = document.getElementById('slider-life');
+        const sliderWind = document.getElementById('slider-wind');
+        const sliderSize = document.getElementById('slider-size');
+        const checkTrails = document.getElementById('check-trails');
+        const checkWalls = document.getElementById('check-walls');
+
+        function updateTuningValues() {
+          document.getElementById('val-gravity').textContent = `${STATE.gravity.toFixed(1)} m/s²`;
+          document.getElementById('val-bounce').textContent = STATE.bounce.toFixed(2);
+          document.getElementById('val-friction').textContent = STATE.friction.toFixed(3);
+          document.getElementById('val-life').textContent = `${STATE.lifeTime}s`;
+          document.getElementById('val-wind').textContent = STATE.wind.toFixed(1);
+          if (labelGravity) labelGravity.textContent = STATE.gravity < 0 ? 'Gravity: Up' : 'Gravity: Down';
+          if (iconGravityArrow) iconGravityArrow.style.transform = STATE.gravity < 0 ? 'rotate(180deg)' : 'rotate(0deg)';
+          if (btnGravityFlip) btnGravityFlip.classList.toggle('active', STATE.gravity < 0);
+          if (drawerLabelGravity) drawerLabelGravity.textContent = STATE.gravity < 0 ? 'Up (-9.8)' : 'Down (9.8)';
+        }
+
+        sliderGravity.addEventListener('input', (e) => {
+          STATE.gravity = parseFloat(e.target.value);
+          updateTuningValues();
+        });
+
+        sliderBounce.addEventListener('input', (e) => {
+          STATE.bounce = parseFloat(e.target.value);
+          updateTuningValues();
+        });
+
+        sliderFriction.addEventListener('input', (e) => {
+          STATE.friction = parseFloat(e.target.value);
+          updateTuningValues();
+        });
+
+        sliderLife.addEventListener('input', (e) => {
+          STATE.lifeTime = parseFloat(e.target.value);
+          updateTuningValues();
+        });
+
+        sliderWind.addEventListener('input', (e) => {
+          STATE.wind = parseFloat(e.target.value);
+          updateTuningValues();
+        });
+
+        sliderSize.addEventListener('input', (e) => {
+          STATE.brushSize = parseInt(e.target.value, 10);
+        });
+
+        checkTrails.addEventListener('change', (e) => {
+          STATE.trails = e.target.checked;
+        });
+
+        checkWalls.addEventListener('change', (e) => {
+          STATE.bounceWalls = e.target.checked;
+        });
+
+        document.getElementById('btn-reset-physics').addEventListener('click', () => {
+          STATE.gravity = CONFIG.defaultGravity;
+          STATE.bounce = CONFIG.defaultBounce;
+          STATE.friction = CONFIG.defaultFriction;
+          STATE.lifeTime = CONFIG.defaultLife;
+          STATE.wind = CONFIG.defaultWind;
+          setTimeScale(1.0);
+          setGhostTrails(false);
+          sliderGravity.value = STATE.gravity;
+          sliderBounce.value = STATE.bounce;
+          sliderFriction.value = STATE.friction;
+          sliderLife.value = STATE.lifeTime;
+          sliderWind.value = STATE.wind;
+          updateTuningValues();
+          showToast('Physics Reset to Defaults');
+        });
+
+        // ----------------------------------------------------
+        // Help Modal
+        // ----------------------------------------------------
+        const helpModal = document.getElementById('help-modal');
+        document.getElementById('btn-help').addEventListener('click', () => helpModal.classList.add('open'));
+        document.getElementById('btn-close-modal').addEventListener('click', () => helpModal.classList.remove('open'));
+        helpModal.addEventListener('click', (e) => {
+          if (e.target === helpModal) helpModal.classList.remove('open');
+        });
+
+        // ----------------------------------------------------
+        // Zen Mode
+        // ----------------------------------------------------
+        const uiLayer = document.getElementById('ui-layer');
+        const zenHint = document.getElementById('zen-hint');
+        function toggleZenMode() {
+          STATE.uiVisible = !STATE.uiVisible;
+          uiLayer.classList.toggle('ui-hidden', !STATE.uiVisible);
+          zenHint.innerHTML = STATE.uiVisible ? '<span>Zen Mode (<strong>H</strong>)</span>' : '<span>Show UI (<strong>H</strong>)</span>';
+          showToast(STATE.uiVisible ? 'UI Restored' : 'Zen Mode Active');
+        }
+        zenHint.addEventListener('click', toggleZenMode);
+
+        // ----------------------------------------------------
+        // Keyboard Shortcuts
+        // ----------------------------------------------------
+        window.addEventListener('keydown', (e) => {
+          if (e.target.tagName === 'INPUT') return;
+
+          if (e.shiftKey) {
+            if (e.key === '!' || e.key === '1') { setBrushType('normal'); return; }
+            if (e.key === '@' || e.key === '2') { setBrushType('fire'); return; }
+            if (e.key === '#' || e.key === '3') { setBrushType('ice'); return; }
+            if (e.key === '$' || e.key === '4') { setBrushType('rainbow'); return; }
+            if (e.key === '%' || e.key === '5') { setBrushType('explode'); return; }
+          }
+
+          switch (e.key.toLowerCase()) {
+            case ' ':
+              e.preventDefault();
+              togglePause();
+              break;
+            case 'c':
+              world.clear();
+              break;
+            case 'x':
+              world.shakeToClear();
+              break;
+            case 'z':
+              if (e.ctrlKey || e.metaKey || !e.shiftKey) {
+                world.undo();
+              }
+              break;
+            case 's':
+              captureScreenshot();
+              break;
+            case 'm':
+              toggleSound();
+              break;
+            case 'h':
+              toggleZenMode();
+              break;
+            case 'g':
+              toggleGravityFlip();
+              break;
+            case 't':
+              setGhostTrails(!STATE.ghostTrails);
+              break;
+            case 'b': {
+              const brushes = ['normal', 'fire', 'ice', 'rainbow', 'explode'];
+              const idx = brushes.indexOf(STATE.brushType);
+              const nextBrush = brushes[(idx + 1) % brushes.length];
+              setBrushType(nextBrush);
+              break;
+            }
+            case '[':
+              setTimeScale(STATE.timeScale - 0.2);
+              showToast(`Speed: ${STATE.timeScale.toFixed(1)}x`);
+              break;
+            case ']':
+              setTimeScale(STATE.timeScale + 0.2);
+              showToast(`Speed: ${STATE.timeScale.toFixed(1)}x`);
+              break;
+            case '1':
+              document.querySelector('[data-tool="drops"]').click();
+              break;
+            case '2':
+              document.querySelector('[data-tool="ropes"]').click();
+              break;
+            case '3':
+              document.querySelector('[data-tool="sparks"]').click();
+              break;
+            case '4':
+              document.querySelector('[data-tool="platform"]').click();
+              break;
+            case '5':
+              document.querySelector('[data-tool="attractor"]').click();
+              break;
+            case '6':
+              document.querySelector('[data-tool="repulsor"]').click();
+              break;
+            case '7':
+              document.querySelector('[data-tool="eraser"]').click();
+              break;
+            case '?':
+              helpModal.classList.toggle('open');
+              break;
+            case 'escape':
+              helpModal.classList.remove('open');
+              controlsPanel.classList.remove('open');
+              presetsDrawer.classList.remove('open');
+              closeMobileMenu();
+              break;
+          }
+        });
+
+        // Initialize values
+        updateTuningValues();
+        setTimeScale(1.0);
+
+        // Welcome toast
+        setTimeout(() => {
+          showToast('✨ Welcome to Gravity Sketch! Touch or drag to create.');
+        }, 600);
+      });
+    })();
+  </script>
+</body>
+</html>
